@@ -1,8 +1,5 @@
-{% extends "base.html" %}
-
-{% block title %}Вход | Lowlands VPN{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block title %}Вход | Lowlands VPN{% endblock %} {%
+block content %}
 <section class="auth-section py-5">
     <div class="container">
         <div class="row justify-content-center">
@@ -10,18 +7,36 @@
                 <div class="auth-card">
                     <span class="eyebrow">Авторизация</span>
                     <h1 class="h2 mt-3 mb-3">Вход в личный кабинет</h1>
-                    <p class="text-secondary mb-4">Позже сюда подключим форму Flask-WTF и проверку пользователя через базу данных.</p>
-                    <form>
+                    <p class="text-secondary mb-4">
+                        Войдите по email и паролю, чтобы открыть кабинет и
+                        управлять своей VPN-подпиской.
+                    </p>
+                    <form method="post" novalidate>
+                        {{ form.hidden_tag() }}
                         <div class="mb-3">
-                            <label class="form-label" for="email">Email</label>
-                            <input class="form-control form-control-lg" id="email" type="email" placeholder="name@example.com">
+                            {{ form.email.label(class="form-label") }} {{
+                            form.email(class="form-control form-control-lg",
+                            placeholder="name@example.com") }} {% for error in
+                            form.email.errors %}
+                            <div class="form-error mt-2">{{ error }}</div>
+                            {% endfor %}
                         </div>
                         <div class="mb-4">
-                            <label class="form-label" for="password">Пароль</label>
-                            <input class="form-control form-control-lg" id="password" type="password" placeholder="Введите пароль">
+                            {{ form.password.label(class="form-label") }} {{
+                            form.password(class="form-control form-control-lg",
+                            placeholder="Введите пароль") }} {% for error in
+                            form.password.errors %}
+                            <div class="form-error mt-2">{{ error }}</div>
+                            {% endfor %}
                         </div>
-                        <button class="btn btn-dark w-100 btn-lg" type="button">Войти</button>
+                        {{ form.submit(class="btn btn-dark w-100 btn-lg") }}
                     </form>
+                    <p class="text-secondary mb-0 mt-4">
+                        Еще нет аккаунта?
+                        <a href="{{ url_for('main.register') }}"
+                            >Зарегистрируйтесь</a
+                        >.
+                    </p>
                 </div>
             </div>
         </div>

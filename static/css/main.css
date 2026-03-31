@@ -13,8 +13,16 @@
 body {
     font-family: "Manrope", sans-serif;
     background:
-        radial-gradient(circle at top left, rgba(207, 95, 47, 0.12), transparent 28%),
-        radial-gradient(circle at top right, rgba(52, 122, 90, 0.12), transparent 26%),
+        radial-gradient(
+            circle at top left,
+            rgba(207, 95, 47, 0.12),
+            transparent 28%
+        ),
+        radial-gradient(
+            circle at top right,
+            rgba(52, 122, 90, 0.12),
+            transparent 26%
+        ),
         linear-gradient(180deg, #f7f3ea 0%, #edf1eb 100%);
     color: var(--app-ink);
 }
@@ -88,7 +96,11 @@ body {
 .hero-panel {
     padding: 1.5rem;
     background:
-        linear-gradient(135deg, rgba(216, 235, 221, 0.8), rgba(255, 255, 255, 0.92)),
+        linear-gradient(
+            135deg,
+            rgba(216, 235, 221, 0.8),
+            rgba(255, 255, 255, 0.92)
+        ),
         var(--app-surface-strong);
 }
 
@@ -179,7 +191,11 @@ body {
 }
 
 .plan-card-featured {
-    background: linear-gradient(180deg, rgba(22, 33, 31, 0.95), rgba(34, 51, 48, 0.92));
+    background: linear-gradient(
+        180deg,
+        rgba(22, 33, 31, 0.95),
+        rgba(34, 51, 48, 0.92)
+    );
     color: #ffffff;
 }
 
@@ -230,12 +246,22 @@ body {
 .cta-card {
     padding: 2rem;
     background:
-        linear-gradient(135deg, rgba(207, 95, 47, 0.15), rgba(255, 255, 255, 0.92)),
+        linear-gradient(
+            135deg,
+            rgba(207, 95, 47, 0.15),
+            rgba(255, 255, 255, 0.92)
+        ),
         var(--app-surface-strong);
 }
 
 .auth-section {
     min-height: 70vh;
+}
+
+.app-alert {
+    border-radius: 1rem;
+    border: 0;
+    box-shadow: 0 1rem 2rem rgba(17, 24, 39, 0.08);
 }
 
 .form-control,
@@ -248,6 +274,11 @@ body {
 .form-select:focus {
     border-color: rgba(207, 95, 47, 0.5);
     box-shadow: 0 0 0 0.25rem rgba(207, 95, 47, 0.15);
+}
+
+.form-error {
+    color: #b42318;
+    font-size: 0.92rem;
 }
 
 .faq-accordion .accordion-item {
@@ -304,6 +335,11 @@ body {
 .mini-value {
     font-size: 1.2rem;
     font-weight: 800;
+}
+
+.dashboard-value-sm {
+    font-size: 1rem;
+    word-break: break-word;
 }
 
 @media (max-width: 991.98px) {

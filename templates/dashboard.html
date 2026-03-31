@@ -1,41 +1,52 @@
-{% extends "base.html" %}
-
-{% block title %}Личный кабинет | Lowlands VPN{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block title %}Личный кабинет | Lowlands VPN{%
+endblock %} {% block content %}
 <section class="py-5">
     <div class="container">
         <div class="row g-4">
             <div class="col-lg-8">
                 <div class="dashboard-card h-100">
                     <span class="eyebrow">Личный кабинет</span>
-                    <h1 class="h2 mt-3 mb-3">Управление подпиской</h1>
+                    <h1 class="h2 mt-3 mb-3">
+                        Здравствуйте, {{ current_user.name }}!
+                    </h1>
                     <p class="text-secondary mb-4">
-                        Здесь позже можно отобразить статус тарифа, дату окончания подписки, кнопки продления и список доступных конфигурационных файлов.
+                        Пользователь уже аутентифицирован, а данные загружаются
+                        из базы. Следующим шагом сюда можно добавить
+                        VPN-конфиги, загрузку файлов и оплату.
                     </p>
                     <div class="row g-3">
                         <div class="col-sm-6">
                             <div class="mini-panel">
+                                <div class="mini-label">Имя</div>
+                                <div class="mini-value">
+                                    {{ current_user.name }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="mini-panel">
+                                <div class="mini-label">Email</div>
+                                <div class="mini-value dashboard-value-sm">
+                                    {{ current_user.email }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="mini-panel">
                                 <div class="mini-label">Текущий тариф</div>
-                                <div class="mini-value">Family</div>
+                                <div class="mini-value">
+                                    {{ current_user.plan_name }}
+                                </div>
                             </div>
                         </div>
                         <div class="col-sm-6">
                             <div class="mini-panel">
-                                <div class="mini-label">Статус</div>
-                                <div class="mini-value">Активен</div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6">
-                            <div class="mini-panel">
-                                <div class="mini-label">Истекает</div>
-                                <div class="mini-value">30.06.2026</div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6">
-                            <div class="mini-panel">
-                                <div class="mini-label">Файлы</div>
-                                <div class="mini-value">3 конфига</div>
+                                <div class="mini-label">Дата регистрации</div>
+                                <div class="mini-value dashboard-value-sm">
+                                    {{
+                                    current_user.created_at.strftime('%d.%m.%Y')
+                                    }}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -45,10 +56,10 @@
                 <div class="dashboard-card h-100">
                     <h2 class="h4 mb-3">Что подключить дальше</h2>
                     <ul class="list-unstyled plan-features mb-0">
-                        <li>Модель пользователя в SQLAlchemy</li>
                         <li>Таблицу подписок и платежей</li>
-                        <li>Загрузку конфиг-файлов</li>
-                        <li>REST API для админки</li>
+                        <li>Загрузку конфиг-файлов для пользователя</li>
+                        <li>REST API для админки и тарифов</li>
+                        <li>Роли администратора и обычного клиента</li>
                     </ul>
                 </div>
             </div>
