@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Регистрация | Lowlands VPN{% endblock %}
+
+{% block content %}
+<section class="auth-section py-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-6">
+                <div class="auth-card">
+                    <span class="eyebrow">Регистрация</span>
+                    <h1 class="h2 mt-3 mb-3">Создание аккаунта</h1>
+                    <p class="text-secondary mb-4">Эта страница подготовлена под регистрацию пользователя и оформление первой подписки.</p>
+                    <form>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="name">Имя</label>
+                                <input class="form-control form-control-lg" id="name" type="text" placeholder="Ваше имя">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="register-email">Email</label>
+                                <input class="form-control form-control-lg" id="register-email" type="email" placeholder="name@example.com">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="register-password">Пароль</label>
+                                <input class="form-control form-control-lg" id="register-password" type="password" placeholder="Не менее 8 символов">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="plan">Тариф</label>
+                                <select class="form-select form-select-lg" id="plan">
+                                    <option>Starter</option>
+                                    <option>Family</option>
+                                    <option>Pro</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-accent w-100 btn-lg mt-4" type="button">Зарегистрироваться</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
