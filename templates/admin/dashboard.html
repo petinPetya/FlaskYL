@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Админ-панель | Lowlands VPN{% endblock %}
+
+{% block content %}
+<section class="py-5">
+    <div class="container">
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4">
+            <div>
+                <span class="eyebrow">Админ-панель</span>
+                <h1 class="h2 mt-3 mb-2">Обзор проекта</h1>
+                <p class="text-secondary mb-0">
+                    Здесь можно быстро оценить пользователей, подписки, тарифы и счета.
+                </p>
+            </div>
+            <a class="btn btn-outline-dark" href="{{ url_for('main.admin_users') }}">Список пользователей</a>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-sm-6 col-xl-2">
+                <div class="mini-panel h-100">
+                    <div class="mini-label">Пользователи</div>
+                    <div class="mini-value">{{ stats.users_total }}</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-2">
+                <div class="mini-panel h-100">
+                    <div class="mini-label">Администраторы</div>
+                    <div class="mini-value">{{ stats.admins_total }}</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-2">
+                <div class="mini-panel h-100">
+                    <div class="mini-label">Подписки</div>
+                    <div class="mini-value">{{ stats.subscriptions_total }}</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-2">
+                <div class="mini-panel h-100">
+                    <div class="mini-label">Активные</div>
+                    <div class="mini-value">{{ stats.subscriptions_active }}</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-2">
+                <div class="mini-panel h-100">
+                    <div class="mini-label">Счета</div>
+                    <div class="mini-value">{{ stats.invoices_total }}</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-2">
+                <div class="mini-panel h-100">
+                    <div class="mini-label">Оплаченные</div>
+                    <div class="mini-value">{{ stats.invoices_paid }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="dashboard-card h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h4 mb-0">Новые пользователи</h2>
+                        <a href="{{ url_for('main.admin_users') }}">Все пользователи</a>
+                    </div>
+                    {% if recent_users %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless align-middle mb-0 admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Роль</th>
+                                    <th>Регистрация</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in recent_users %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('main.admin_user_detail', user_id=user.id) }}">{{ user.email }}</a>
+                                    </td>
+                                    <td>
+                                        {% if user.is_admin %}
+                                        <span class="badge text-bg-dark">admin</span>
+                                        {% else %}
+                                        <span class="badge text-bg-secondary">client</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-secondary mb-0">Пользователей пока нет.</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="dashboard-card h-100">
+                    <h2 class="h4 mb-3">Тарифы</h2>
+                    <div class="row g-3">
+                        {% for tariff in tariffs %}
+                        <div class="col-md-6">
+                            <div class="mini-panel h-100">
+                                <div class="d-flex justify-content-between gap-2">
+                                    <div class="mini-value">{{ tariff.name }}</div>
+                                    {% if tariff.is_popular %}
+                                    <span class="badge text-bg-warning">popular</span>
+                                    {% endif %}
+                                </div>
+                                <div class="mini-label mt-2">{{ '%.2f'|format(tariff.price_cents / 100) }} ₽ / {{ tariff.days_valid }} дн.</div>
+                                <div class="mini-label">
+                                    {% if tariff.traffic_limit_bytes %}
+                                    Трафик ограничен
+                                    {% else %}
+                                    Безлимитный трафик
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="dashboard-card">
+                    <h2 class="h4 mb-3">Последние счета</h2>
+                    {% if recent_invoices %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless align-middle mb-0 admin-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Пользователь</th>
+                                    <th>Статус</th>
+                                    <th>Сумма</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for invoice in recent_invoices %}
+                                <tr>
+                                    <td class="admin-id">{{ invoice.id }}</td>
+                                    <td>
+                                        <a href="{{ url_for('main.admin_user_detail', user_id=invoice.user.id) }}">{{ invoice.user.email }}</a>
+                                    </td>
+                                    <td>{{ invoice.status }}</td>
+                                    <td>{{ '%.2f'|format(invoice.amount_cents / 100) }} ₽</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-secondary mb-0">Счетов пока нет.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

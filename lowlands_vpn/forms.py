@@ -1,6 +1,13 @@
 from flask_wtf import FlaskForm
-from wtforms import PasswordField, SelectField, StringField, SubmitField
-from wtforms.validators import DataRequired, Email, EqualTo, Length, ValidationError
+from wtforms import IntegerField, PasswordField, SelectField, StringField, SubmitField
+from wtforms.validators import (
+    DataRequired,
+    Email,
+    EqualTo,
+    Length,
+    NumberRange,
+    ValidationError,
+)
 
 from lowlands_vpn.data import PLAN_CHOICES
 from lowlands_vpn.extensions import db
@@ -8,15 +15,6 @@ from lowlands_vpn.models import User
 
 
 class RegisterForm(FlaskForm):
-    name = StringField(
-        "Имя",
-        validators=[
-            DataRequired(message="Введите имя."),
-            Length(
-                min=2, max=120, message="Имя должно содержать от 2 до 120 символов."
-            ),
-        ],
-    )
     email = StringField(
         "Email",
         validators=[
@@ -71,3 +69,18 @@ class LoginForm(FlaskForm):
 
 class LogoutForm(FlaskForm):
     submit = SubmitField("Выйти")
+
+
+class AdminActionForm(FlaskForm):
+    submit = SubmitField("Подтвердить")
+
+
+class BalanceAdjustmentForm(FlaskForm):
+    amount_rub = IntegerField(
+        "Сумма, ₽",
+        validators=[
+            DataRequired(message="Введите сумму."),
+            NumberRange(min=1, message="Сумма должна быть больше нуля."),
+        ],
+    )
+    submit = SubmitField("Изменить баланс")

@@ -7,27 +7,27 @@ endblock %} {% block content %}
                 <div class="dashboard-card h-100">
                     <span class="eyebrow">Личный кабинет</span>
                     <h1 class="h2 mt-3 mb-3">
-                        Здравствуйте, {{ current_user.name }}!
+                        Аккаунт {{ current_user.email }}
                     </h1>
                     <p class="text-secondary mb-4">
-                        Пользователь уже аутентифицирован, а данные загружаются
-                        из базы. Следующим шагом сюда можно добавить
-                        VPN-конфиги, загрузку файлов и оплату.
+                        Теперь кабинет работает поверх новых таблиц `users`,
+                        `tariffs`, `subscriptions` и `invoices`.
                     </p>
                     <div class="row g-3">
                         <div class="col-sm-6">
                             <div class="mini-panel">
-                                <div class="mini-label">Имя</div>
+                                <div class="mini-label">Email</div>
                                 <div class="mini-value">
-                                    {{ current_user.name }}
+                                    {{ current_user.email }}
                                 </div>
                             </div>
                         </div>
                         <div class="col-sm-6">
                             <div class="mini-panel">
-                                <div class="mini-label">Email</div>
+                                <div class="mini-label">Баланс</div>
                                 <div class="mini-value dashboard-value-sm">
-                                    {{ current_user.email }}
+                                    {{ '%.2f'|format(current_user.balance / 100)
+                                    }} ₽
                                 </div>
                             </div>
                         </div>
@@ -35,7 +35,29 @@ endblock %} {% block content %}
                             <div class="mini-panel">
                                 <div class="mini-label">Текущий тариф</div>
                                 <div class="mini-value">
-                                    {{ current_user.plan_name }}
+                                    {% if current_subscription %} {{
+                                    current_subscription.tariff.name }} {% else
+                                    %} Нет подписки {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="mini-panel">
+                                <div class="mini-label">Статус</div>
+                                <div class="mini-value dashboard-value-sm">
+                                    {% if current_subscription %} {{
+                                    current_subscription.status }} {% else %}
+                                    inactive {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="mini-panel">
+                                <div class="mini-label">Действует до</div>
+                                <div class="mini-value dashboard-value-sm">
+                                    {% if current_subscription %} {{
+                                    current_subscription.expires_at.strftime('%d.%m.%Y')
+                                    }} {% else %} - {% endif %}
                                 </div>
                             </div>
                         </div>
@@ -56,11 +78,26 @@ endblock %} {% block content %}
                 <div class="dashboard-card h-100">
                     <h2 class="h4 mb-3">Что подключить дальше</h2>
                     <ul class="list-unstyled plan-features mb-0">
-                        <li>Таблицу подписок и платежей</li>
-                        <li>Загрузку конфиг-файлов для пользователя</li>
+                        <li>Выдачу конфиг-файлов по `Subscription`</li>
+                        <li>Пополнение баланса и оплату счетов `Invoice`</li>
                         <li>REST API для админки и тарифов</li>
-                        <li>Роли администратора и обычного клиента</li>
+                        <li>Статусы подписки по трафику и сроку</li>
                     </ul>
+                    {% if current_user.is_admin %}
+                    <hr />
+                    <a
+                        class="btn btn-dark w-100"
+                        href="{{ url_for('main.admin_dashboard') }}"
+                        >Перейти в админ-панель</a
+                    >
+                    {% endif %}
+                    <hr />
+                    <div class="mini-label">Последний счет</div>
+                    <div class="mini-value dashboard-value-sm">
+                        {% if latest_invoice %} {{ latest_invoice.status }} / {{
+                        '%.2f'|format(latest_invoice.amount_cents / 100) }} ₽ {%
+                        else %} Счетов пока нет {% endif %}
+                    </div>
                 </div>
             </div>
         </div>

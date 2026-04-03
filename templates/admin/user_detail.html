@@ -1,0 +1,227 @@
+{% extends "base.html" %} {% block title %}Пользователь {{ user.email }} |
+Админ-панель{% endblock %} {% block content %}
+<section class="py-5">
+    <div class="container">
+        <div
+            class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4"
+        >
+            <div>
+                <span class="eyebrow">Карточка пользователя</span>
+                <h1 class="h2 mt-3 mb-2">{{ user.email }}</h1>
+                <p class="text-secondary mb-0">
+                    Детальная информация по аккаунту, подпискам и счетам.
+                </p>
+            </div>
+            <a
+                class="btn btn-outline-dark"
+                href="{{ url_for('main.admin_users') }}"
+                >К списку пользователей</a
+            >
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-4">
+                <div class="dashboard-card h-100">
+                    <h2 class="h4 mb-3">Профиль</h2>
+                    <div class="mini-panel mb-3">
+                        <div class="mini-label">Роль</div>
+                        <div class="mini-value">
+                            {% if user.is_admin %}admin{% else %}client{% endif
+                            %}
+                        </div>
+                    </div>
+                    <div class="mini-panel mb-3">
+                        <div class="mini-label">Статус</div>
+                        <div class="mini-value">
+                            {% if user.is_active %}active{% else %}disabled{%
+                            endif %}
+                        </div>
+                    </div>
+                    <div class="mini-panel mb-3">
+                        <div class="mini-label">Баланс</div>
+                        <div class="mini-value">
+                            {{ '%.2f'|format(user.balance / 100) }} ₽
+                        </div>
+                    </div>
+                    <div class="mini-panel mb-3">
+                        <div class="mini-label">Регистрация</div>
+                        <div class="mini-value dashboard-value-sm">
+                            {{ user.created_at.strftime('%d.%m.%Y %H:%M') }}
+                        </div>
+                    </div>
+                    <div class="mini-panel">
+                        <div class="mini-label">Последний вход</div>
+                        <div class="mini-value dashboard-value-sm">
+                            {% if user.last_login_at %} {{
+                            user.last_login_at.strftime('%d.%m.%Y %H:%M') }} {%
+                            else %} Не входил {% endif %}
+                        </div>
+                    </div>
+                    <hr />
+                    <div class="d-grid gap-3">
+                        <form
+                            method="post"
+                            action="{{ url_for('main.admin_toggle_user_admin', user_id=user.id) }}"
+                        >
+                            {{ role_form.hidden_tag() }}
+                            <button class="btn btn-dark w-100" type="submit">
+                                {% if user.is_admin %}Снять права
+                                администратора{% else %}Сделать
+                                администратором{% endif %}
+                            </button>
+                        </form>
+                        <form
+                            method="post"
+                            action="{{ url_for('main.admin_toggle_user_active', user_id=user.id) }}"
+                        >
+                            {{ status_form.hidden_tag() }}
+                            <button
+                                class="btn btn-outline-dark w-100"
+                                type="submit"
+                            >
+                                {% if user.is_active %}Деактивировать аккаунт{%
+                                else %}Активировать аккаунт{% endif %}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div class="dashboard-card mb-4">
+                    <h2 class="h4 mb-3">Управление балансом</h2>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <form
+                                method="post"
+                                action="{{ url_for('main.admin_deposit_balance', user_id=user.id) }}"
+                            >
+                                {{ deposit_form.hidden_tag() }}
+                                <label
+                                    class="form-label"
+                                    for="{{ deposit_form.amount_rub.id }}"
+                                    >Пополнение, ₽</label
+                                >
+                                {{ deposit_form.amount_rub(class="form-control",
+                                placeholder="Например, 500") }} {% for error in
+                                deposit_form.amount_rub.errors %}
+                                <div class="form-error mt-2">{{ error }}</div>
+                                {% endfor %}
+                                <button
+                                    class="btn btn-accent w-100 mt-3"
+                                    type="submit"
+                                >
+                                    Пополнить баланс
+                                </button>
+                            </form>
+                        </div>
+                        <div class="col-md-6">
+                            <form
+                                method="post"
+                                action="{{ url_for('main.admin_charge_balance', user_id=user.id) }}"
+                            >
+                                {{ charge_form.hidden_tag() }}
+                                <label
+                                    class="form-label"
+                                    for="{{ charge_form.amount_rub.id }}"
+                                    >Списание, ₽</label
+                                >
+                                {{ charge_form.amount_rub(class="form-control",
+                                placeholder="Например, 300") }} {% for error in
+                                charge_form.amount_rub.errors %}
+                                <div class="form-error mt-2">{{ error }}</div>
+                                {% endfor %}
+                                <button
+                                    class="btn btn-outline-dark w-100 mt-3"
+                                    type="submit"
+                                >
+                                    Списать с баланса
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-card mb-4">
+                    <h2 class="h4 mb-3">Подписки</h2>
+                    {% if subscriptions %}
+                    <div class="table-responsive">
+                        <table
+                            class="table table-borderless align-middle mb-0 admin-table"
+                        >
+                            <thead>
+                                <tr>
+                                    <th>Тариф</th>
+                                    <th>Статус</th>
+                                    <th>Старт</th>
+                                    <th>Окончание</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for subscription in subscriptions %}
+                                <tr>
+                                    <td>{{ subscription.tariff.name }}</td>
+                                    <td>{{ subscription.status }}</td>
+                                    <td>
+                                        {{
+                                        subscription.starts_at.strftime('%d.%m.%Y')
+                                        }}
+                                    </td>
+                                    <td>
+                                        {{
+                                        subscription.expires_at.strftime('%d.%m.%Y')
+                                        }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-secondary mb-0">Подписок пока нет.</p>
+                    {% endif %}
+                </div>
+
+                <div class="dashboard-card">
+                    <h2 class="h4 mb-3">Счета</h2>
+                    {% if invoices %}
+                    <div class="table-responsive">
+                        <table
+                            class="table table-borderless align-middle mb-0 admin-table"
+                        >
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Тип</th>
+                                    <th>Статус</th>
+                                    <th>Сумма</th>
+                                    <th>Создан</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for invoice in invoices %}
+                                <tr>
+                                    <td class="admin-id">{{ invoice.id }}</td>
+                                    <td>{{ invoice.type }}</td>
+                                    <td>{{ invoice.status }}</td>
+                                    <td>
+                                        {{ '%.2f'|format(invoice.amount_cents /
+                                        100) }} ₽
+                                    </td>
+                                    <td>
+                                        {{ invoice.created_at.strftime('%d.%m.%Y
+                                        %H:%M') }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-secondary mb-0">Счетов пока нет.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

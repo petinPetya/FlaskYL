@@ -342,6 +342,30 @@ body {
     word-break: break-word;
 }
 
+.admin-table th {
+    color: var(--app-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.admin-table td,
+.admin-table th {
+    padding: 0.9rem 0.75rem;
+    border-bottom: 1px solid rgba(22, 33, 31, 0.08);
+}
+
+.admin-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.admin-id {
+    max-width: 12rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    word-break: break-all;
+}
+
 @media (max-width: 991.98px) {
     .app-navbar .navbar-collapse {
         padding-top: 1rem;
