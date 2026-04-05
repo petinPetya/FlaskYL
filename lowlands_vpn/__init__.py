@@ -1,3 +1,5 @@
+import logging
+
 from flask import Flask, render_template
 from flask_wtf.csrf import CSRFError
 
@@ -6,7 +8,7 @@ from lowlands_vpn.database import init_database
 from lowlands_vpn.extensions import csrf, db, login_manager
 
 
-def create_app() -> Flask:
+def create_app(test_config: dict | None = None) -> Flask:
     app = Flask(
         __name__,
         instance_relative_config=True,
@@ -14,10 +16,13 @@ def create_app() -> Flask:
         static_folder=str(BASE_DIR / "static"),
     )
     app.config.from_object(Config)
+    if test_config:
+        app.config.update(test_config)
 
     db.init_app(app)
     csrf.init_app(app)
     login_manager.init_app(app)
+    configure_logging(app)
 
     from lowlands_vpn.routes import main_bp
 
@@ -28,6 +33,19 @@ def create_app() -> Flask:
         init_database(app.instance_path)
 
     return app
+
+
+def configure_logging(app: Flask) -> None:
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=getattr(logging, app.config["LOG_LEVEL"], logging.INFO),
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+
+    if app.config["SECRET_KEY"] == "change-me-in-production":
+        app.logger.warning(
+            "Using the default SECRET_KEY. Set SECRET_KEY in the environment."
+        )
 
 
 def register_error_handlers(app: Flask) -> None:

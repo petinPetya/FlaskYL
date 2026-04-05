@@ -10,8 +10,9 @@ endblock %} {% block content %}
                         Аккаунт {{ current_user.email }}
                     </h1>
                     <p class="text-secondary mb-4">
-                        Теперь кабинет работает поверх новых таблиц `users`,
-                        `tariffs`, `subscriptions` и `invoices`.
+                        Кабинет теперь разделяет аккаунт, запросы на тариф и
+                        устройства, чтобы выдача VPN на несколько девайсов не
+                        зависела от отдельных сборок клиента.
                     </p>
                     <div class="row g-3">
                         <div class="col-sm-6">
@@ -37,7 +38,7 @@ endblock %} {% block content %}
                                 <div class="mini-value">
                                     {% if current_subscription %} {{
                                     current_subscription.tariff.name }} {% else
-                                    %} Нет подписки {% endif %}
+                                    %} Нет активированной подписки {% endif %}
                                 </div>
                             </div>
                         </div>
@@ -63,25 +64,48 @@ endblock %} {% block content %}
                         </div>
                         <div class="col-sm-6">
                             <div class="mini-panel">
-                                <div class="mini-label">Дата регистрации</div>
+                                <div class="mini-label">Слоты устройств</div>
                                 <div class="mini-value dashboard-value-sm">
-                                    {{
-                                    current_user.created_at.strftime('%d.%m.%Y')
-                                    }}
+                                    {% if current_subscription %} {{
+                                    current_subscription.get_active_device_count()
+                                    }} / {{
+                                    current_subscription.get_device_limit() }}
+                                    {% else %} 0 / 0 {% endif %}
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    {% if pending_request %}
+                    <div class="mini-panel mt-4">
+                        <div class="mini-label">Ожидающий запрос</div>
+                        <div class="mini-value">
+                            {% if pending_request_tariff %} {{
+                            pending_request_tariff.name }} {% else %} Тариф из
+                            запроса {% endif %}
+                        </div>
+                        <div class="mini-label mt-2">
+                            Создан {{
+                            pending_request.created_at.strftime('%d.%m.%Y
+                            %H:%M') }}
+                        </div>
+                        <div class="mini-label">
+                            Статус: {{ pending_request.status }}
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             <div class="col-lg-4">
                 <div class="dashboard-card h-100">
-                    <h2 class="h4 mb-3">Что подключить дальше</h2>
+                    <h2 class="h4 mb-3">Следующий шаг</h2>
                     <ul class="list-unstyled plan-features mb-0">
-                        <li>Выдачу конфиг-файлов по `Subscription`</li>
-                        <li>Пополнение баланса и оплату счетов `Invoice`</li>
-                        <li>REST API для админки и тарифов</li>
-                        <li>Статусы подписки по трафику и сроку</li>
+                        <li>Оставьте запрос на нужный тариф</li>
+                        <li>После активации добавьте свои устройства</li>
+                        <li>Готовый VLESS link появится прямо в кабинете</li>
+                        <li>
+                            Админка поможет переподнять проблемные устройства
+                        </li>
                     </ul>
                     {% if current_user.is_admin %}
                     <hr />
@@ -92,12 +116,217 @@ endblock %} {% block content %}
                     >
                     {% endif %}
                     <hr />
-                    <div class="mini-label">Последний счет</div>
+                    <div class="mini-label">Последняя запись</div>
                     <div class="mini-value dashboard-value-sm">
                         {% if latest_invoice %} {{ latest_invoice.status }} / {{
                         '%.2f'|format(latest_invoice.amount_cents / 100) }} ₽ {%
-                        else %} Счетов пока нет {% endif %}
+                        else %} Счетов и запросов пока нет {% endif %}
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-card mt-4">
+            <div
+                class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4"
+            >
+                <div>
+                    <span class="eyebrow">Тарифы</span>
+                    <h2 class="h4 mt-3 mb-2">
+                        Запрос на подключение или продление
+                    </h2>
+                    <p class="text-secondary mb-0">
+                        Живые платежи пока отключены, поэтому кабинет создаёт
+                        запрос на тариф, который позже подтверждается вручную.
+                    </p>
+                </div>
+            </div>
+            <div class="row g-3">
+                {% for tariff in tariffs %}
+                <div class="col-lg-4">
+                    <div class="mini-panel h-100 d-flex flex-column">
+                        <div
+                            class="d-flex justify-content-between align-items-start gap-3"
+                        >
+                            <div class="mini-value">{{ tariff.name }}</div>
+                            {% if tariff.is_popular %}
+                            <span class="badge text-bg-warning">popular</span>
+                            {% endif %}
+                        </div>
+                        <div class="mini-label mt-2">
+                            {{ '%.2f'|format(tariff.price_cents / 100) }} ₽ / {{
+                            tariff.days_valid }} дн.
+                        </div>
+                        <div class="mini-label">
+                            До {{ tariff.device_limit }} устройств
+                        </div>
+                        <div class="mini-label mb-3">
+                            {% if tariff.traffic_limit_bytes %} Трафик ограничен
+                            {% else %} Безлимитный трафик {% endif %}
+                        </div>
+                        <div class="text-secondary mb-4">
+                            {{ tariff.description }}
+                        </div>
+                        <form
+                            method="post"
+                            action="{{ url_for('main.request_subscription') }}"
+                            class="mt-auto"
+                        >
+                            {{ request_form.csrf_token }}
+                            <input
+                                type="hidden"
+                                name="tariff_id"
+                                value="{{ tariff.id }}"
+                            />
+                            <button
+                                class="btn btn-outline-dark w-100"
+                                type="submit"
+                            >
+                                Оставить запрос
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="dashboard-card mt-4">
+            <div class="row g-4">
+                <div class="col-lg-4">
+                    <span class="eyebrow">Устройства</span>
+                    <h2 class="h4 mt-3 mb-3">Управление слотами</h2>
+                    <p class="text-secondary">
+                        Добавляйте устройства только после активации подписки.
+                        Для каждого девайса хранится отдельный UUID и
+                        собственный VLESS link.
+                    </p>
+                    {% if vpn_auto_provisioning_enabled %}
+                    <div class="mini-panel mb-3">
+                        <div class="mini-label">
+                            Автовыдача VPN включена. После добавления устройство
+                            попробует получить конфиг сразу.
+                        </div>
+                    </div>
+                    {% endif %} {% if current_subscription and
+                    current_subscription.is_active() %}
+                    <form
+                        method="post"
+                        action="{{ url_for('main.add_device') }}"
+                    >
+                        {{ device_form.hidden_tag() }}
+                        <div class="mb-3">
+                            {{ device_form.name.label(class="form-label") }} {{
+                            device_form.name(class="form-control",
+                            placeholder="Например, MacBook Air") }} {% for error
+                            in device_form.name.errors %}
+                            <div class="form-error mt-2">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="mb-3">
+                            {{ device_form.platform.label(class="form-label") }}
+                            {{ device_form.platform(class="form-select") }} {%
+                            for error in device_form.platform.errors %}
+                            <div class="form-error mt-2">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <button class="btn btn-accent w-100" type="submit">
+                            Добавить устройство
+                        </button>
+                    </form>
+                    {% else %}
+                    <div class="mini-panel">
+                        <div class="mini-label">
+                            Сначала нужен активный тариф. После этого станут
+                            доступны новые устройства и их выдача.
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="col-lg-8">
+                    {% if devices %}
+                    <div class="table-responsive">
+                        <table
+                            class="table table-borderless align-middle mb-0 admin-table"
+                        >
+                            <thead>
+                                <tr>
+                                    <th>Устройство</th>
+                                    <th>Платформа</th>
+                                    <th>Статус</th>
+                                    <th>Выдача</th>
+                                    <th>UUID</th>
+                                    <th>IP</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for device in devices %}
+                                <tr>
+                                    <td>{{ device.name }}</td>
+                                    <td>{{ device.platform }}</td>
+                                    <td>{{ device.status }}</td>
+                                    <td>{{ device.provisioning_state }}</td>
+                                    <td class="admin-id">
+                                        {{ device.vpn_uuid or '—' }}
+                                    </td>
+                                    <td>{{ device.assigned_ip or '—' }}</td>
+                                    <td class="text-end">
+                                        {% if device.status != 'revoked' %}
+                                        <form
+                                            method="post"
+                                            action="{{ url_for('main.revoke_device', device_id=device.id) }}"
+                                            class="d-inline"
+                                        >
+                                            {{ device_action_form.csrf_token }}
+                                            <button
+                                                class="btn btn-sm btn-outline-dark"
+                                                type="submit"
+                                            >
+                                                Отозвать
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% if device.last_error %}
+                                <tr>
+                                    <td
+                                        colspan="7"
+                                        class="text-secondary small"
+                                    >
+                                        Ошибка: {{ device.last_error }}
+                                    </td>
+                                </tr>
+                                {% endif %} {% if device.vpn_link and
+                                device.status != 'revoked' %}
+                                <tr>
+                                    <td colspan="7">
+                                        <label class="form-label small mb-2"
+                                            >VLESS link</label
+                                        >
+                                        <textarea
+                                            class="form-control"
+                                            rows="3"
+                                            readonly
+                                        >
+{{ device.vpn_link }}</textarea
+                                        >
+                                    </td>
+                                </tr>
+                                {% endif %} {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="mini-panel">
+                        <div class="mini-value">Устройств пока нет</div>
+                        <div class="mini-label mt-2">
+                            После активации тарифа здесь появятся ваши слоты,
+                            статусы выдачи и VLESS links.
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

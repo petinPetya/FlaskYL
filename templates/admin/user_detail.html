@@ -9,7 +9,8 @@
                 <span class="eyebrow">Карточка пользователя</span>
                 <h1 class="h2 mt-3 mb-2">{{ user.email }}</h1>
                 <p class="text-secondary mb-0">
-                    Детальная информация по аккаунту, подпискам и счетам.
+                    Детальная информация по аккаунту, запросам, подпискам и
+                    устройствам.
                 </p>
             </div>
             <a
@@ -142,6 +143,104 @@
                 </div>
 
                 <div class="dashboard-card mb-4">
+                    <h2 class="h4 mb-3">Запросы на тариф и счета</h2>
+                    {% if invoices %}
+                    <div class="table-responsive">
+                        <table
+                            class="table table-borderless align-middle mb-0 admin-table"
+                        >
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Тип</th>
+                                    <th>Тариф</th>
+                                    <th>Статус</th>
+                                    <th>Сумма</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for invoice in invoices %} {% set
+                                requested_tariff = get_invoice_tariff(invoice)
+                                %}
+                                <tr>
+                                    <td class="admin-id">{{ invoice.id }}</td>
+                                    <td>{{ invoice.type }}</td>
+                                    <td>
+                                        {{ requested_tariff.name if
+                                        requested_tariff else '—' }}
+                                    </td>
+                                    <td>{{ invoice.status }}</td>
+                                    <td>
+                                        {{ '%.2f'|format(invoice.amount_cents /
+                                        100) }} ₽
+                                    </td>
+                                    <td class="text-end">
+                                        {% if invoice.type ==
+                                        'subscription_request' and
+                                        invoice.status == 'pending' %}
+                                        <div
+                                            class="d-flex flex-column flex-sm-row gap-2 justify-content-end"
+                                        >
+                                            <form
+                                                method="post"
+                                                action="{{ url_for('main.admin_approve_invoice', invoice_id=invoice.id) }}"
+                                            >
+                                                {{
+                                                invoice_action_form.hidden_tag()
+                                                }}
+                                                <button
+                                                    class="btn btn-sm btn-dark"
+                                                    type="submit"
+                                                >
+                                                    Подтвердить
+                                                </button>
+                                            </form>
+                                            <form
+                                                method="post"
+                                                action="{{ url_for('main.admin_cancel_invoice', invoice_id=invoice.id) }}"
+                                            >
+                                                {{
+                                                invoice_action_form.hidden_tag()
+                                                }}
+                                                <button
+                                                    class="btn btn-sm btn-outline-dark"
+                                                    type="submit"
+                                                >
+                                                    Отменить
+                                                </button>
+                                            </form>
+                                        </div>
+                                        {% elif is_invoice_removable(invoice) %}
+                                        <form
+                                            method="post"
+                                            action="{{ url_for('main.admin_delete_invoice', invoice_id=invoice.id) }}"
+                                        >
+                                            {{
+                                            invoice_action_form.hidden_tag()
+                                            }}
+                                            <button
+                                                class="btn btn-sm btn-outline-danger"
+                                                type="submit"
+                                            >
+                                                Удалить запись
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-secondary mb-0">
+                        Счетов и запросов пока нет.
+                    </p>
+                    {% endif %}
+                </div>
+
+                <div class="dashboard-card mb-4">
                     <h2 class="h4 mb-3">Подписки</h2>
                     {% if subscriptions %}
                     <div class="table-responsive">
@@ -152,8 +251,10 @@
                                 <tr>
                                     <th>Тариф</th>
                                     <th>Статус</th>
+                                    <th>Слоты</th>
                                     <th>Старт</th>
                                     <th>Окончание</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -163,6 +264,12 @@
                                     <td>{{ subscription.status }}</td>
                                     <td>
                                         {{
+                                        subscription.get_active_device_count()
+                                        }} / {{ subscription.get_device_limit()
+                                        }}
+                                    </td>
+                                    <td>
+                                        {{
                                         subscription.starts_at.strftime('%d.%m.%Y')
                                         }}
                                     </td>
@@ -170,6 +277,24 @@
                                         {{
                                         subscription.expires_at.strftime('%d.%m.%Y')
                                         }}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if is_subscription_removable(subscription) %}
+                                        <form
+                                            method="post"
+                                            action="{{ url_for('main.admin_delete_subscription', subscription_id=subscription.id) }}"
+                                        >
+                                            {{
+                                            invoice_action_form.hidden_tag()
+                                            }}
+                                            <button
+                                                class="btn btn-sm btn-outline-danger"
+                                                type="submit"
+                                            >
+                                                Удалить запись
+                                            </button>
+                                        </form>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -182,42 +307,181 @@
                 </div>
 
                 <div class="dashboard-card">
-                    <h2 class="h4 mb-3">Счета</h2>
-                    {% if invoices %}
-                    <div class="table-responsive">
-                        <table
-                            class="table table-borderless align-middle mb-0 admin-table"
+                    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+                        <div>
+                            <h2 class="h4 mb-1">Устройства</h2>
+                            {% if revoked_devices_count %}
+                            <div class="mini-label">
+                                Отозванных записей: {{ revoked_devices_count }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% if revoked_devices_count %}
+                        <form
+                            method="post"
+                            action="{{ url_for('main.admin_delete_revoked_devices', user_id=user.id) }}"
                         >
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Тип</th>
-                                    <th>Статус</th>
-                                    <th>Сумма</th>
-                                    <th>Создан</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for invoice in invoices %}
-                                <tr>
-                                    <td class="admin-id">{{ invoice.id }}</td>
-                                    <td>{{ invoice.type }}</td>
-                                    <td>{{ invoice.status }}</td>
-                                    <td>
-                                        {{ '%.2f'|format(invoice.amount_cents /
-                                        100) }} ₽
-                                    </td>
-                                    <td>
-                                        {{ invoice.created_at.strftime('%d.%m.%Y
-                                        %H:%M') }}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                            {{ vpn_action_form.hidden_tag() }}
+                            <button
+                                class="btn btn-sm btn-outline-danger"
+                                type="submit"
+                            >
+                                Удалить все отозванные
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% if vpn_auto_provisioning_enabled %}
+                    <p class="text-secondary">
+                        Для устройств можно переповторить выдачу или отзыв прямо
+                        из админки через SSH-скрипты на VPN сервере.
+                    </p>
+                    {% endif %} {% if devices %}
+                    <div class="d-grid gap-3">
+                        {% for device in devices %} {% set device_form =
+                        device_forms[device.id] %}
+                        <div class="mini-panel">
+                            <div
+                                class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3"
+                            >
+                                <div>
+                                    <div class="mini-value">
+                                        {{ device.name }}
+                                    </div>
+                                    <div class="mini-label">
+                                        {{ device.platform }} / {{
+                                        device.subscription.tariff.name }}
+                                    </div>
+                                    <div class="mini-label">
+                                        UUID: {{ device.vpn_uuid or 'не
+                                        назначен' }}
+                                    </div>
+                                    <div class="mini-label">
+                                        Email: {{ device.vpn_email or 'не
+                                        назначен' }}
+                                    </div>
+                                </div>
+                                <div class="mini-label">
+                                    Создано {{
+                                    device.created_at.strftime('%d.%m.%Y %H:%M')
+                                    }}
+                                </div>
+                            </div>
+                            <form
+                                method="post"
+                                action="{{ url_for('main.admin_update_device', device_id=device.id) }}"
+                            >
+                                {{ device_form.hidden_tag() }}
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        {{
+                                        device_form.status.label(class="form-label")
+                                        }} {{
+                                        device_form.status(class="form-select")
+                                        }}
+                                    </div>
+                                    <div class="col-md-3">
+                                        {{
+                                        device_form.provisioning_state.label(class="form-label")
+                                        }} {{
+                                        device_form.provisioning_state(class="form-select")
+                                        }}
+                                    </div>
+                                    <div class="col-md-3">
+                                        {{
+                                        device_form.assigned_ip.label(class="form-label")
+                                        }} {{
+                                        device_form.assigned_ip(class="form-control",
+                                        placeholder="10.0.0.2") }}
+                                    </div>
+                                    <div class="col-md-3">
+                                        {{
+                                        device_form.last_error.label(class="form-label")
+                                        }} {{
+                                        device_form.last_error(class="form-control",
+                                        placeholder="Если есть ошибка") }}
+                                    </div>
+                                </div>
+                                <div
+                                    class="d-flex flex-column flex-md-row justify-content-between gap-3 mt-3"
+                                >
+                                    <div class="mini-label">
+                                        {% if device.last_error %} Ошибка: {{
+                                        device.last_error }} {% else %}
+                                        Последнее состояние: {{
+                                        device.provisioning_state }} {% endif %}
+                                    </div>
+                                    <button
+                                        class="btn btn-sm btn-dark"
+                                        type="submit"
+                                    >
+                                        Обновить устройство
+                                    </button>
+                                </div>
+                            </form>
+                            <div
+                                class="d-flex flex-column flex-md-row gap-2 mt-3"
+                            >
+                                <form
+                                    method="post"
+                                    action="{{ url_for('main.admin_provision_device', device_id=device.id) }}"
+                                >
+                                    {{ vpn_action_form.hidden_tag() }}
+                                    <button
+                                        class="btn btn-sm btn-outline-dark"
+                                        type="submit"
+                                    >
+                                        Выдать VPN
+                                    </button>
+                                </form>
+                                {% if device.status != 'revoked' %}
+                                <form
+                                    method="post"
+                                    action="{{ url_for('main.admin_revoke_device', device_id=device.id) }}"
+                                >
+                                    {{ vpn_action_form.hidden_tag() }}
+                                    <button
+                                        class="btn btn-sm btn-outline-dark"
+                                        type="submit"
+                                    >
+                                        Отозвать VPN
+                                    </button>
+                                </form>
+                                {% else %}
+                                <form
+                                    method="post"
+                                    action="{{ url_for('main.admin_delete_device', device_id=device.id) }}"
+                                >
+                                    {{ vpn_action_form.hidden_tag() }}
+                                    <button
+                                        class="btn btn-sm btn-outline-danger"
+                                        type="submit"
+                                    >
+                                        Удалить запись
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                            {% if device.vpn_link and device.status != 'revoked'
+                            %}
+                            <div class="mt-3">
+                                <label class="form-label mb-2"
+                                    >VLESS link</label
+                                >
+                                <textarea
+                                    class="form-control"
+                                    rows="3"
+                                    readonly
+                                >
+{{ device.vpn_link }}</textarea
+                                >
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
                     </div>
                     {% else %}
-                    <p class="text-secondary mb-0">Счетов пока нет.</p>
+                    <p class="text-secondary mb-0">Устройств пока нет.</p>
                     {% endif %}
                 </div>
             </div>

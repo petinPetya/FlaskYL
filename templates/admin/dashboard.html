@@ -10,7 +10,8 @@
                 <span class="eyebrow">Админ-панель</span>
                 <h1 class="h2 mt-3 mb-2">Обзор проекта</h1>
                 <p class="text-secondary mb-0">
-                    Здесь можно быстро оценить пользователей, подписки, тарифы и счета.
+                    Здесь видны запросы на тарифы, текущее состояние устройств
+                    и подготовка к подключению реального VPN-провижининга.
                 </p>
             </div>
             <a class="btn btn-outline-dark" href="{{ url_for('main.admin_users') }}">Список пользователей</a>
@@ -21,12 +22,6 @@
                 <div class="mini-panel h-100">
                     <div class="mini-label">Пользователи</div>
                     <div class="mini-value">{{ stats.users_total }}</div>
-                </div>
-            </div>
-            <div class="col-sm-6 col-xl-2">
-                <div class="mini-panel h-100">
-                    <div class="mini-label">Администраторы</div>
-                    <div class="mini-value">{{ stats.admins_total }}</div>
                 </div>
             </div>
             <div class="col-sm-6 col-xl-2">
@@ -43,19 +38,133 @@
             </div>
             <div class="col-sm-6 col-xl-2">
                 <div class="mini-panel h-100">
-                    <div class="mini-label">Счета</div>
-                    <div class="mini-value">{{ stats.invoices_total }}</div>
+                    <div class="mini-label">Запросы</div>
+                    <div class="mini-value">{{ stats.requests_pending }}</div>
                 </div>
             </div>
             <div class="col-sm-6 col-xl-2">
                 <div class="mini-panel h-100">
-                    <div class="mini-label">Оплаченные</div>
-                    <div class="mini-value">{{ stats.invoices_paid }}</div>
+                    <div class="mini-label">Устройства</div>
+                    <div class="mini-value">{{ stats.devices_total }}</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-2">
+                <div class="mini-panel h-100">
+                    <div class="mini-label">Готовые</div>
+                    <div class="mini-value">{{ stats.devices_ready }}</div>
                 </div>
             </div>
         </div>
 
         <div class="row g-4">
+            <div class="col-lg-7">
+                <div class="dashboard-card h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h4 mb-0">Ожидающие запросы</h2>
+                    </div>
+                    {% if pending_requests %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless align-middle mb-0 admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Пользователь</th>
+                                    <th>Тариф</th>
+                                    <th>Сумма</th>
+                                    <th>Создан</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for invoice in pending_requests %}
+                                {% set requested_tariff = get_invoice_tariff(invoice) %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('main.admin_user_detail', user_id=invoice.user.id) }}">{{ invoice.user.email }}</a>
+                                    </td>
+                                    <td>{{ requested_tariff.name if requested_tariff else 'Не найден' }}</td>
+                                    <td>{{ '%.2f'|format(invoice.amount_cents / 100) }} ₽</td>
+                                    <td>{{ invoice.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                                    <td class="text-end">
+                                        <div class="d-flex flex-column flex-sm-row gap-2 justify-content-end">
+                                            <form method="post" action="{{ url_for('main.admin_approve_invoice', invoice_id=invoice.id) }}">
+                                                {{ action_form.hidden_tag() }}
+                                                <button class="btn btn-sm btn-dark" type="submit">Подтвердить</button>
+                                            </form>
+                                            <form method="post" action="{{ url_for('main.admin_cancel_invoice', invoice_id=invoice.id) }}">
+                                                {{ action_form.hidden_tag() }}
+                                                <button class="btn btn-sm btn-outline-dark" type="submit">Отменить</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-secondary mb-0">Необработанных запросов пока нет.</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="dashboard-card h-100">
+                    <h2 class="h4 mb-3">Тарифы</h2>
+                    <div class="row g-3">
+                        {% for tariff in tariffs %}
+                        <div class="col-12">
+                            <div class="mini-panel h-100">
+                                <div class="d-flex justify-content-between gap-2">
+                                    <div class="mini-value">{{ tariff.name }}</div>
+                                    {% if tariff.is_popular %}
+                                    <span class="badge text-bg-warning">popular</span>
+                                    {% endif %}
+                                </div>
+                                <div class="mini-label mt-2">
+                                    {{ '%.2f'|format(tariff.price_cents / 100) }} ₽ /
+                                    {{ tariff.days_valid }} дн.
+                                </div>
+                                <div class="mini-label">
+                                    До {{ tariff.device_limit }} устройств
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="dashboard-card h-100">
+                    <h2 class="h4 mb-3">Новые устройства</h2>
+                    {% if recent_devices %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless align-middle mb-0 admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Пользователь</th>
+                                    <th>Устройство</th>
+                                    <th>Платформа</th>
+                                    <th>Выдача</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for device in recent_devices %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('main.admin_user_detail', user_id=device.subscription.user.id) }}">{{ device.subscription.user.email }}</a>
+                                    </td>
+                                    <td>{{ device.name }}</td>
+                                    <td>{{ device.platform }}</td>
+                                    <td>{{ device.provisioning_state }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-secondary mb-0">Устройств пока нет.</p>
+                    {% endif %}
+                </div>
+            </div>
             <div class="col-lg-6">
                 <div class="dashboard-card h-100">
                     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -96,36 +205,9 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="col-lg-6">
-                <div class="dashboard-card h-100">
-                    <h2 class="h4 mb-3">Тарифы</h2>
-                    <div class="row g-3">
-                        {% for tariff in tariffs %}
-                        <div class="col-md-6">
-                            <div class="mini-panel h-100">
-                                <div class="d-flex justify-content-between gap-2">
-                                    <div class="mini-value">{{ tariff.name }}</div>
-                                    {% if tariff.is_popular %}
-                                    <span class="badge text-bg-warning">popular</span>
-                                    {% endif %}
-                                </div>
-                                <div class="mini-label mt-2">{{ '%.2f'|format(tariff.price_cents / 100) }} ₽ / {{ tariff.days_valid }} дн.</div>
-                                <div class="mini-label">
-                                    {% if tariff.traffic_limit_bytes %}
-                                    Трафик ограничен
-                                    {% else %}
-                                    Безлимитный трафик
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
             <div class="col-12">
                 <div class="dashboard-card">
-                    <h2 class="h4 mb-3">Последние счета</h2>
+                    <h2 class="h4 mb-3">Последние счета и запросы</h2>
                     {% if recent_invoices %}
                     <div class="table-responsive">
                         <table class="table table-borderless align-middle mb-0 admin-table">
@@ -134,7 +216,9 @@
                                     <th>ID</th>
                                     <th>Пользователь</th>
                                     <th>Статус</th>
+                                    <th>Тип</th>
                                     <th>Сумма</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -145,7 +229,16 @@
                                         <a href="{{ url_for('main.admin_user_detail', user_id=invoice.user.id) }}">{{ invoice.user.email }}</a>
                                     </td>
                                     <td>{{ invoice.status }}</td>
+                                    <td>{{ invoice.type }}</td>
                                     <td>{{ '%.2f'|format(invoice.amount_cents / 100) }} ₽</td>
+                                    <td class="text-end">
+                                        {% if is_invoice_removable(invoice) %}
+                                        <form method="post" action="{{ url_for('main.admin_delete_invoice', invoice_id=invoice.id) }}">
+                                            {{ action_form.hidden_tag() }}
+                                            <button class="btn btn-sm btn-outline-danger" type="submit">Удалить</button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

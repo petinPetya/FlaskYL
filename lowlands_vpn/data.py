@@ -5,6 +5,7 @@ PLANS = [
         "price_cents": 19900,
         "period": "30 дней",
         "days_valid": 30,
+        "device_limit": 1,
         "traffic_limit_bytes": 214748364800,
         "description": "Быстрый старт для одного устройства",
         "features": [
@@ -21,6 +22,7 @@ PLANS = [
         "price_cents": 44900,
         "period": "90 дней",
         "days_valid": 90,
+        "device_limit": 3,
         "traffic_limit_bytes": 644245094400,
         "description": "Для нескольких устройств дома и в поездках",
         "features": [
@@ -37,6 +39,7 @@ PLANS = [
         "price_cents": 149000,
         "period": "365 дней",
         "days_valid": 365,
+        "device_limit": 5,
         "traffic_limit_bytes": None,
         "description": "Максимальная выгода для постоянного использования",
         "features": [
@@ -48,5 +51,3 @@ PLANS = [
         "is_popular": False,
     },
 ]
-
-PLAN_CHOICES = [(plan["name"], f"{plan['name']} - {plan['period']}") for plan in PLANS]

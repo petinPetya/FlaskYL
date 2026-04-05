@@ -8,8 +8,8 @@
                     <span class="eyebrow">Регистрация</span>
                     <h1 class="h2 mt-3 mb-3">Создание аккаунта</h1>
                     <p class="text-secondary mb-4">
-                        После регистрации создается аккаунт и активируется
-                        стартовая подписка на выбранный тариф.
+                        После регистрации создается только аккаунт. Тариф и
+                        устройства теперь настраиваются в личном кабинете.
                     </p>
                     <form method="post" novalidate>
                         {{ form.hidden_tag() }}
@@ -38,13 +38,6 @@
                                 form-control-lg", placeholder="Повторите
                                 пароль") }} {% for error in
                                 form.confirm_password.errors %}
-                                <div class="form-error mt-2">{{ error }}</div>
-                                {% endfor %}
-                            </div>
-                            <div class="col-12">
-                                {{ form.plan.label(class="form-label") }} {{
-                                form.plan(class="form-select form-select-lg") }}
-                                {% for error in form.plan.errors %}
                                 <div class="form-error mt-2">{{ error }}</div>
                                 {% endfor %}
                             </div>
