@@ -68,8 +68,10 @@ endblock %} {% block content %}
                                 <div class="mini-value dashboard-value-sm">
                                     {% if current_subscription %} {{
                                     current_subscription.get_active_device_count()
-                                    }} / {{
-                                    current_subscription.get_device_limit() }}
+                                    }} / {% if current_user.is_admin %}∞{% else
+                                    %} {{
+                                    current_subscription.get_device_limit() }}{%
+                                    endif %}
                                     {% else %} 0 / 0 {% endif %}
                                 </div>
                             </div>
@@ -201,6 +203,13 @@ endblock %} {% block content %}
                         Для каждого девайса хранится отдельный UUID и
                         собственный VLESS link.
                     </p>
+                    {% if current_user.is_admin %}
+                    <div class="mini-panel mb-3">
+                        <div class="mini-label">
+                            Для администраторов лимит устройств не применяется.
+                        </div>
+                    </div>
+                    {% endif %}
                     {% if vpn_auto_provisioning_enabled %}
                     <div class="mini-panel mb-3">
                         <div class="mini-label">

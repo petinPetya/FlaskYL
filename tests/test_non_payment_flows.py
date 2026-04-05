@@ -48,6 +48,7 @@ def enable_vpn_ssh_config(app):
             "VPN_REMOTE_ADD_SCRIPT": "/usr/local/sbin/xray-add-client",
             "VPN_REMOTE_REMOVE_SCRIPT": "/usr/local/sbin/xray-remove-client",
             "VPN_REMOTE_BUILD_LINK_SCRIPT": "/usr/local/sbin/xray-build-vless-link",
+            "VPN_REMOTE_LIST_SCRIPT": "/usr/local/sbin/xray-list-clients",
             "VLESS_HOST": "",
             "VLESS_PBK": "",
             "VLESS_SNI": "",
@@ -246,6 +247,41 @@ def test_device_limit_is_enforced_and_can_be_reused_after_revoke(app, client):
     assert active_devices == 1
 
 
+def test_admin_is_not_limited_by_tariff_device_cap(app, client):
+    register_user(client, "admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    first_response = client.post(
+        "/devices",
+        data={"name": "Admin Laptop", "platform": "windows"},
+        follow_redirects=True,
+    )
+    second_response = client.post(
+        "/devices",
+        data={"name": "Admin Phone", "platform": "android"},
+        follow_redirects=True,
+    )
+
+    active_devices = Device.query.filter(Device.status != "revoked").count()
+
+    assert "Устройство добавлено" in first_response.get_data(as_text=True)
+    assert "Устройство добавлено" in second_response.get_data(as_text=True)
+    assert active_devices == 2
+
+
 def test_admin_can_update_device_provisioning_state(app, client):
     register_user(client, "admin@example.com")
     logout_user(client)
@@ -291,6 +327,121 @@ def test_admin_can_update_device_provisioning_state(app, client):
     assert updated_device.status == "active"
     assert updated_device.provisioning_state == "ready"
     assert updated_device.assigned_ip == "10.0.0.2"
+
+
+def test_admin_dashboard_shows_server_vless_clients(app, client, monkeypatch):
+    enable_vpn_ssh_config(app)
+
+    def fake_run(command, capture_output, check, text):
+        remote_command = command[-1]
+        if "xray-list-clients" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps(
+                    {
+                        "status": "ok",
+                        "stats_enabled": False,
+                        "clients": [
+                            {
+                                "uuid": "server-uuid-1",
+                                "email": "user1@xray",
+                                "name": "user1@xray",
+                                "flow": "xtls-rprx-vision",
+                                "link": "vless://server-uuid-1@test:443",
+                                "stats": {
+                                    "available": False,
+                                    "uplink_bytes": None,
+                                    "downlink_bytes": None,
+                                    "total_bytes": None,
+                                },
+                            }
+                        ],
+                    }
+                )
+            )
+        raise AssertionError(f"Unexpected command: {remote_command}")
+
+    monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
+
+    register_user(client, "admin@example.com")
+    response = client.get("/admin", follow_redirects=True)
+
+    page = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "VLESS ссылки на сервере" in page
+    assert "user1@xray" in page
+    assert "vless://server-uuid-1@test:443" in page
+
+
+def test_admin_can_delete_server_vless_client_and_sync_local_device(
+    app, client, monkeypatch
+):
+    enable_vpn_ssh_config(app)
+
+    register_user(client, "admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+    admin_user = db.session.scalar(
+        db.select(User).where(User.email == "admin@example.com")
+    )
+
+    subscription = db.session.scalar(
+        db.select(Subscription).where(Subscription.user_id == admin_user.id)
+    )
+    device = Device(
+        subscription_id=subscription.id,
+        name="Server Device",
+        platform="windows",
+        status="active",
+        provisioning_state="ready",
+        vpn_uuid="server-uuid-1",
+        vpn_email="user1@xray",
+        vpn_link="vless://server-uuid-1@test:443",
+    )
+    db.session.add(device)
+    db.session.commit()
+
+    def fake_run(command, capture_output, check, text):
+        remote_command = command[-1]
+        if "xray-remove-client" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"status": "ok", "removed_count": 1})
+            )
+        if "xray-list-clients" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps(
+                    {
+                        "status": "ok",
+                        "stats_enabled": False,
+                        "clients": [],
+                    }
+                )
+            )
+        raise AssertionError(f"Unexpected command: {remote_command}")
+
+    monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
+
+    response = client.post(
+        "/admin/vpn/clients/server-uuid-1/delete",
+        data={},
+        follow_redirects=True,
+    )
+
+    updated_device = db.session.get(Device, device.id)
+    assert response.status_code == 200
+    assert "VLESS-ссылка удалена с сервера." in response.get_data(as_text=True)
+    assert updated_device.status == "revoked"
+    assert updated_device.provisioning_state == "revoked"
+    assert updated_device.vpn_link is None
 
 
 def test_device_is_provisioned_via_vpn_server_when_configured(app, client, monkeypatch):

@@ -29,7 +29,9 @@ from lowlands_vpn.services import (
 from lowlands_vpn.vpn import (
     VpnProvisioningError,
     is_vpn_auto_provisioning_enabled,
+    list_server_vless_clients,
     provision_device,
+    remove_server_vless_client_by_uuid,
     revoke_device_on_server,
 )
 
@@ -107,6 +109,21 @@ def is_subscription_removable(subscription: Subscription) -> bool:
 
 def is_device_removable(device: Device) -> bool:
     return device.status == "revoked"
+
+
+def format_bytes(value: int | None) -> str:
+    if value is None:
+        return "недоступно"
+    if value < 1024:
+        return f"{value} B"
+
+    units = ["KB", "MB", "GB", "TB"]
+    size = float(value)
+    for unit in units:
+        size /= 1024
+        if size < 1024 or unit == units[-1]:
+            return f"{size:.1f} {unit}"
+    return f"{value} B"
 
 
 @main_bp.route("/")
@@ -260,6 +277,7 @@ def request_subscription():
 def add_device():
     form = DeviceCreateForm()
     current_subscription = get_current_subscription(current_user)
+    is_admin_unlimited = current_user.is_admin
 
     if not form.validate_on_submit():
         flash("Проверьте название устройства и выбранную платформу.", "danger")
@@ -269,7 +287,7 @@ def add_device():
         flash("Добавлять устройства можно только для активной подписки.", "warning")
         return redirect(url_for("main.dashboard"))
 
-    if not current_subscription.can_add_device():
+    if not is_admin_unlimited and not current_subscription.can_add_device():
         flash("Лимит устройств по тарифу уже исчерпан.", "warning")
         return redirect(url_for("main.dashboard"))
 
@@ -373,6 +391,44 @@ def admin_dashboard():
     )
     recent_devices = Device.query.order_by(Device.created_at.desc()).limit(8).all()
     tariffs = Tariff.query.order_by(Tariff.sort_order.asc(), Tariff.name.asc()).all()
+    server_vless_clients = []
+    server_vless_error = None
+    server_vless_stats_enabled = False
+
+    if is_vpn_auto_provisioning_enabled():
+        try:
+            server_payload = list_server_vless_clients()
+            server_vless_stats_enabled = server_payload["stats_enabled"]
+            uuids = [
+                client.get("uuid")
+                for client in server_payload["clients"]
+                if client.get("uuid")
+            ]
+            device_by_uuid = {}
+            if uuids:
+                linked_devices = (
+                    Device.query.join(Subscription)
+                    .filter(Device.vpn_uuid.in_(uuids))
+                    .all()
+                )
+                device_by_uuid = {
+                    device.vpn_uuid: device
+                    for device in linked_devices
+                    if device.vpn_uuid
+                }
+
+            for client in server_payload["clients"]:
+                local_device = device_by_uuid.get(client.get("uuid"))
+                server_vless_clients.append(
+                    {
+                        **client,
+                        "device": local_device,
+                        "user": local_device.subscription.user if local_device else None,
+                    }
+                )
+        except VpnProvisioningError as error:
+            server_vless_error = str(error)
+
     return render_template(
         "admin/dashboard.html",
         stats=stats,
@@ -381,9 +437,14 @@ def admin_dashboard():
         pending_requests=pending_requests,
         recent_devices=recent_devices,
         tariffs=tariffs,
+        server_vless_clients=server_vless_clients,
+        server_vless_error=server_vless_error,
+        server_vless_stats_enabled=server_vless_stats_enabled,
+        vpn_auto_provisioning_enabled=is_vpn_auto_provisioning_enabled(),
         action_form=AdminActionForm(),
         get_invoice_tariff=get_invoice_tariff,
         is_invoice_removable=is_invoice_removable,
+        format_bytes=format_bytes,
     )
 
 
@@ -793,6 +854,34 @@ def admin_delete_device(device_id):
     db.session.commit()
     flash("Запись об отозванном устройстве удалена.", "info")
     return redirect(url_for("main.admin_user_detail", user_id=user_id))
+
+
+@main_bp.route("/admin/vpn/clients/<string:client_uuid>/delete", methods=["POST"])
+@admin_required
+def admin_delete_server_vless_client(client_uuid):
+    form = AdminActionForm()
+    if not form.validate_on_submit():
+        flash("Некорректный запрос на удаление VLESS-ссылки.", "danger")
+        return redirect(url_for("main.admin_dashboard"))
+
+    try:
+        remove_server_vless_client_by_uuid(client_uuid)
+    except VpnProvisioningError as error:
+        flash(f"Не удалось удалить VLESS-ссылку: {error}", "danger")
+        return redirect(url_for("main.admin_dashboard"))
+
+    linked_device = db.session.scalar(
+        db.select(Device).where(Device.vpn_uuid == client_uuid)
+    )
+    if linked_device is not None and linked_device.status != "revoked":
+        linked_device.mark_revoked()
+        db.session.commit()
+    elif linked_device is not None:
+        linked_device.vpn_link = None
+        db.session.commit()
+
+    flash("VLESS-ссылка удалена с сервера.", "info")
+    return redirect(url_for("main.admin_dashboard"))
 
 
 @main_bp.route("/admin/users/<string:user_id>/devices/delete-revoked", methods=["POST"])

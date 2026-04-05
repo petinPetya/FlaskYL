@@ -249,6 +249,94 @@
                     {% endif %}
                 </div>
             </div>
+            <div class="col-12">
+                <div class="dashboard-card">
+                    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-3">
+                        <div>
+                            <h2 class="h4 mb-1">VLESS ссылки на сервере</h2>
+                            <div class="mini-label">
+                                Подтягиваются прямо из live-конфига Xray.
+                            </div>
+                        </div>
+                        {% if server_vless_stats_enabled %}
+                        <span class="badge text-bg-success">stats enabled</span>
+                        {% else %}
+                        <span class="badge text-bg-secondary">stats unavailable</span>
+                        {% endif %}
+                    </div>
+                    {% if server_vless_error %}
+                    <p class="text-danger mb-0">{{ server_vless_error }}</p>
+                    {% elif not vpn_auto_provisioning_enabled %}
+                    <p class="text-secondary mb-0">
+                        SSH/VPN интеграция не настроена в текущем запуске Flask,
+                        поэтому серверный список не загружен.
+                    </p>
+                    {% elif server_vless_clients %}
+                    {% if not server_vless_stats_enabled %}
+                    <p class="text-secondary">
+                        Трафик сейчас недоступен, потому что на сервере Xray не включены
+                        `api` и `stats`. Список ссылок и ручное удаление уже работают.
+                    </p>
+                    {% endif %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless align-middle mb-0 admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Email / label</th>
+                                    <th>UUID</th>
+                                    <th>Локальная привязка</th>
+                                    <th>Трафик</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for client in server_vless_clients %}
+                                <tr>
+                                    <td>{{ client.email or client.name }}</td>
+                                    <td class="admin-id">{{ client.uuid }}</td>
+                                    <td>
+                                        {% if client.device %}
+                                        <div>
+                                            <a href="{{ url_for('main.admin_user_detail', user_id=client.user.id) }}">{{ client.user.email }}</a>
+                                        </div>
+                                        <div class="mini-label">
+                                            {{ client.device.name }} / {{ client.device.platform }}
+                                        </div>
+                                        {% else %}
+                                        <span class="text-secondary">Нет записи в Flask</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if client.stats.available %}
+                                        <div class="mini-label">Up: {{ format_bytes(client.stats.uplink_bytes) }}</div>
+                                        <div class="mini-label">Down: {{ format_bytes(client.stats.downlink_bytes) }}</div>
+                                        <div class="mini-label">Total: {{ format_bytes(client.stats.total_bytes) }}</div>
+                                        {% else %}
+                                        <span class="text-secondary">недоступно</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <form method="post" action="{{ url_for('main.admin_delete_server_vless_client', client_uuid=client.uuid) }}">
+                                            {{ action_form.hidden_tag() }}
+                                            <button class="btn btn-sm btn-outline-danger" type="submit">Удалить</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="5">
+                                        <label class="form-label small mb-2">VLESS link</label>
+                                        <textarea class="form-control" rows="3" readonly>{{ client.link }}</textarea>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-secondary mb-0">Серверных VLESS-клиентов пока нет.</p>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
 </section>

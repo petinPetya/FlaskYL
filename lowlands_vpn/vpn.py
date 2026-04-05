@@ -147,6 +147,18 @@ def revoke_device_on_server(device) -> None:
         )
 
 
+def remove_server_vless_client_by_uuid(client_uuid: str) -> dict:
+    if not is_vpn_auto_provisioning_enabled():
+        raise VpnProvisioningError("Автопровижининг VPN не настроен.")
+
+    result = run_remote_json_command(
+        current_app.config["VPN_REMOTE_REMOVE_SCRIPT"],
+        "--uuid",
+        client_uuid,
+    )
+    return result.payload
+
+
 def run_remote_json_command(script_path: str, *script_args: str) -> RemoteCommandResult:
     result = run_remote_command(script_path, *script_args)
     payload = {}
@@ -217,3 +229,19 @@ def _looks_like_existing_client_error(error_message: str) -> bool:
         "UUID already exists" in error_message
         or "Email already exists" in error_message
     )
+
+
+def list_server_vless_clients() -> dict:
+    if not is_vpn_auto_provisioning_enabled():
+        raise VpnProvisioningError("Автопровижининг VPN не настроен.")
+
+    result = run_remote_json_command(
+        current_app.config["VPN_REMOTE_LIST_SCRIPT"],
+        "--json",
+    )
+    return {
+        "stats_enabled": bool(result.payload.get("stats_enabled", False)),
+        "clients": result.payload.get("clients", []),
+        "inbound_tag": result.payload.get("inbound_tag"),
+        "config_path": result.payload.get("config_path"),
+    }

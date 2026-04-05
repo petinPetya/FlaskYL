@@ -20,6 +20,7 @@
 - `VPN_REMOTE_ADD_SCRIPT`
 - `VPN_REMOTE_REMOVE_SCRIPT`
 - `VPN_REMOTE_BUILD_LINK_SCRIPT`
+- `VPN_REMOTE_LIST_SCRIPT`
 
 Если настроен `VPN_REMOTE_BUILD_LINK_SCRIPT`, Flask по умолчанию строит `vless://` ссылку
 через удаленный скрипт на VPN-сервере. Это безопаснее, потому что `sid` и `sni` берутся
@@ -40,6 +41,7 @@
 - `scripts/xray-add-client.sh`
 - `scripts/xray-remove-client.sh`
 - `scripts/xray-build-vless-link.sh`
+- `scripts/xray-list-clients.sh`
 
 Они рассчитаны на запуск на VPN-сервере с Ubuntu и Xray под `systemd`.
 Все три скрипта автоматически загружают `/etc/lowlands-vpn/xray.env`, если файл существует.
@@ -59,6 +61,7 @@
 - `XRAY_INBOUND_TAG` по умолчанию `vless-reality`
 - `XRAY_FLOW` по умолчанию `xtls-rprx-vision`
 - `XRAY_LOCK_FILE` по умолчанию `/run/lock/xray-config.lock`
+- `XRAY_API_SERVER` по умолчанию `127.0.0.1:10085`
 - `XRAY_ENV_FILE` по умолчанию `/etc/lowlands-vpn/xray.env`
 
 ### Переменные окружения для VLESS ссылки
@@ -82,8 +85,9 @@ sudo chmod 640 /etc/lowlands-vpn/xray.env
 sudo cp scripts/xray-add-client.sh /usr/local/sbin/xray-add-client
 sudo cp scripts/xray-remove-client.sh /usr/local/sbin/xray-remove-client
 sudo cp scripts/xray-build-vless-link.sh /usr/local/sbin/xray-build-vless-link
-sudo chown root:root /usr/local/sbin/xray-add-client /usr/local/sbin/xray-remove-client /usr/local/sbin/xray-build-vless-link
-sudo chmod 750 /usr/local/sbin/xray-add-client /usr/local/sbin/xray-remove-client /usr/local/sbin/xray-build-vless-link
+sudo cp scripts/xray-list-clients.sh /usr/local/sbin/xray-list-clients
+sudo chown root:root /usr/local/sbin/xray-add-client /usr/local/sbin/xray-remove-client /usr/local/sbin/xray-build-vless-link /usr/local/sbin/xray-list-clients
+sudo chmod 750 /usr/local/sbin/xray-add-client /usr/local/sbin/xray-remove-client /usr/local/sbin/xray-build-vless-link /usr/local/sbin/xray-list-clients
 ```
 
 После копирования поправьте значения в `/etc/lowlands-vpn/xray.env`.
@@ -126,3 +130,12 @@ export VLESS_SNI='www.yandex.ru'
   --uuid 1430dff8-73ef-44bf-a9ce-09c3ef9b638b \
   --name 'pc-test-1'
 ```
+
+Вывести live-список клиентов из Xray:
+
+```bash
+sudo ./scripts/xray-list-clients.sh --json
+```
+
+Если в Xray позже будут включены `api` и `stats`, этот же helper начнет отдавать
+и трафик по каждому клиенту.

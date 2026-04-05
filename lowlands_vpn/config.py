@@ -66,6 +66,9 @@ class Config:
     VPN_REMOTE_BUILD_LINK_SCRIPT = os.environ.get(
         "VPN_REMOTE_BUILD_LINK_SCRIPT", "/usr/local/sbin/xray-build-vless-link"
     ).strip()
+    VPN_REMOTE_LIST_SCRIPT = os.environ.get(
+        "VPN_REMOTE_LIST_SCRIPT", "/usr/local/sbin/xray-list-clients"
+    ).strip()
     VLESS_HOST = os.environ.get("VLESS_HOST", "").strip()
     VLESS_PORT = get_env_int("VLESS_PORT", 443)
     VLESS_PBK = os.environ.get("VLESS_PBK", "").strip()
