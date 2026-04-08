@@ -187,6 +187,8 @@ def run_remote_command(
         "BatchMode=yes",
         "-o",
         f"ConnectTimeout={current_app.config['VPN_SSH_CONNECT_TIMEOUT']}",
+        "-o",
+        "LogLevel=ERROR",
     ]
     if current_app.config.get("VPN_SSH_KEY_PATH"):
         ssh_command.extend(["-i", current_app.config["VPN_SSH_KEY_PATH"]])

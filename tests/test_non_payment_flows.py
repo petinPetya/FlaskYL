@@ -70,6 +70,33 @@ def test_registration_creates_account_without_subscription(app, client):
     assert Subscription.query.count() == 0
 
 
+def test_public_pages_and_auth_flow_work(app, client):
+    index_response = client.get("/")
+    login_page = client.get("/login")
+    register_page = client.get("/register")
+    dashboard_redirect = client.get("/dashboard", follow_redirects=False)
+
+    assert index_response.status_code == 200
+    assert login_page.status_code == 200
+    assert register_page.status_code == 200
+    assert dashboard_redirect.status_code == 302
+    assert "/login" in dashboard_redirect.headers["Location"]
+
+    register_user(client, "flow@example.com")
+    logout_response = logout_user(client)
+    failed_login = client.post(
+        "/login",
+        data={"email": "flow@example.com", "password": "wrong-pass"},
+        follow_redirects=True,
+    )
+    success_login = login_user(client, "flow@example.com")
+
+    assert logout_response.status_code == 200
+    assert "вышли из аккаунта" in logout_response.get_data(as_text=True)
+    assert "Неверный email или пароль." in failed_login.get_data(as_text=True)
+    assert "успешно вошли" in success_login.get_data(as_text=True)
+
+
 def test_user_can_create_pending_subscription_request(app, client):
     register_user(client, "client@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
@@ -123,6 +150,78 @@ def test_admin_can_approve_subscription_request(app, client):
     assert subscription is not None
     assert subscription.status == "active"
     assert subscription.tariff_id == family.id
+
+
+def test_non_admin_cannot_access_admin_routes(app, client):
+    register_user(client, "admin@example.com")
+    logout_user(client)
+    register_user(client, "user@example.com")
+
+    response = client.get("/admin", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert "только администраторам" in response.get_data(as_text=True)
+
+
+def test_admin_user_pages_render(app, client):
+    register_user(client, "admin@example.com")
+    logout_user(client)
+    register_user(client, "user@example.com")
+    user = db.session.scalar(db.select(User).where(User.email == "user@example.com"))
+    logout_user(client)
+
+    login_user(client, "admin@example.com")
+    users_page = client.get("/admin/users", follow_redirects=True)
+    detail_page = client.get(f"/admin/users/{user.id}", follow_redirects=True)
+
+    assert users_page.status_code == 200
+    assert "user@example.com" in users_page.get_data(as_text=True)
+    assert detail_page.status_code == 200
+    assert "Карточка пользователя" in detail_page.get_data(as_text=True)
+
+
+def test_admin_can_toggle_user_role_active_and_balance(app, client):
+    register_user(client, "admin@example.com")
+    logout_user(client)
+    register_user(client, "user@example.com")
+    user = db.session.scalar(db.select(User).where(User.email == "user@example.com"))
+    logout_user(client)
+
+    login_user(client, "admin@example.com")
+    role_response = client.post(
+        f"/admin/users/{user.id}/toggle-admin",
+        data={},
+        follow_redirects=True,
+    )
+    status_response = client.post(
+        f"/admin/users/{user.id}/toggle-active",
+        data={},
+        follow_redirects=True,
+    )
+    deposit_response = client.post(
+        f"/admin/users/{user.id}/deposit",
+        data={"deposit-amount_rub": 500},
+        follow_redirects=True,
+    )
+    charge_response = client.post(
+        f"/admin/users/{user.id}/charge",
+        data={"charge-amount_rub": 125},
+        follow_redirects=True,
+    )
+
+    updated_user = db.session.get(User, user.id)
+
+    assert role_response.status_code == 200
+    assert "Роль пользователя обновлена." in role_response.get_data(as_text=True)
+    assert status_response.status_code == 200
+    assert "Статус пользователя обновлен." in status_response.get_data(as_text=True)
+    assert deposit_response.status_code == 200
+    assert "Баланс пополнен." in deposit_response.get_data(as_text=True)
+    assert charge_response.status_code == 200
+    assert "Средства списаны с баланса." in charge_response.get_data(as_text=True)
+    assert updated_user.is_admin is True
+    assert updated_user.is_active is False
+    assert updated_user.balance == 37500
 
 
 def test_admin_subscription_is_lifetime_by_default(app, client):
@@ -220,6 +319,76 @@ def test_admin_can_delete_revoked_subscription_note(app, client):
     assert deleted_subscription is None
     assert updated_invoice is not None
     assert updated_invoice.subscription_id is None
+
+
+def test_admin_can_cancel_pending_subscription_request(app, client):
+    register_user(client, "admin@example.com")
+    logout_user(client)
+
+    register_user(client, "user@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    logout_user(client)
+
+    login_user(client, "admin@example.com")
+    response = client.post(
+        f"/admin/invoices/{invoice.id}/cancel",
+        data={},
+        follow_redirects=True,
+    )
+
+    updated_invoice = db.session.get(Invoice, invoice.id)
+
+    assert response.status_code == 200
+    assert "Запрос отменен." in response.get_data(as_text=True)
+    assert updated_invoice.status == "cancelled"
+
+
+def test_regular_user_subscription_expiry_cannot_be_managed_manually(app, client):
+    register_user(client, "admin@example.com")
+    logout_user(client)
+
+    register_user(client, "user@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    logout_user(client)
+
+    login_user(client, "admin@example.com")
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    subscription = db.session.scalar(
+        db.select(Subscription).where(Subscription.user_id == invoice.user_id)
+    )
+    future_value = (utc_now() + timedelta(days=10)).strftime("%Y-%m-%dT%H:%M")
+
+    response = client.post(
+        f"/admin/subscriptions/{subscription.id}/expiry",
+        data={
+            f"subscription-{subscription.id}-is_lifetime": "y",
+            f"subscription-{subscription.id}-expires_at": future_value,
+        },
+        follow_redirects=True,
+    )
+
+    updated_subscription = db.session.get(Subscription, subscription.id)
+
+    assert response.status_code == 200
+    assert "только для подписок администратора" in response.get_data(as_text=True)
+    assert updated_subscription.is_lifetime is False
 
 
 def test_admin_can_set_manual_expiration_for_admin_subscription(app, client):

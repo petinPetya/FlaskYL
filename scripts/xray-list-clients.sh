@@ -50,6 +50,18 @@ query_user_stats() {
     local email="$1"
     local stats_json="{}"
 
+    if [[ -z "$email" ]]; then
+        jq -n '
+            {
+                available: false,
+                email: "",
+                uplink_bytes: null,
+                downlink_bytes: null,
+                total_bytes: null
+            }'
+        return 0
+    fi
+
     if ! stats_supported_in_config; then
         jq -n \
             --arg email "$email" \
@@ -103,9 +115,9 @@ query_user_stats() {
                 total_bytes: 0
             };
             if ($item.name | endswith(">>>uplink")) then
-                .uplink_bytes = ($item.value | tonumber)
+                .uplink_bytes = (($item.value // 0) | tonumber)
             elif ($item.name | endswith(">>>downlink")) then
-                .downlink_bytes = ($item.value | tonumber)
+                .downlink_bytes = (($item.value // 0) | tonumber)
             else
                 .
             end
