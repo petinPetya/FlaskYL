@@ -259,6 +259,7 @@
                             </thead>
                             <tbody>
                                 {% for subscription in subscriptions %}
+                                {% set subscription_form = subscription_forms[subscription.id] %}
                                 <tr>
                                     <td>{{ subscription.tariff.name }}</td>
                                     <td>{{ subscription.status }}</td>
@@ -274,9 +275,7 @@
                                         }}
                                     </td>
                                     <td>
-                                        {{
-                                        subscription.expires_at.strftime('%d.%m.%Y')
-                                        }}
+                                        {{ subscription.get_expires_at_display() }}
                                     </td>
                                     <td class="text-end">
                                         {% if is_subscription_removable(subscription) %}
@@ -297,6 +296,39 @@
                                         {% endif %}
                                     </td>
                                 </tr>
+                                {% if can_manage_subscription_expiry(subscription) %}
+                                <tr>
+                                    <td colspan="6">
+                                        <form
+                                            method="post"
+                                            action="{{ url_for('main.admin_update_subscription_expiry', subscription_id=subscription.id) }}"
+                                            class="row g-3 align-items-end"
+                                        >
+                                            {{ subscription_form.hidden_tag() }}
+                                            <div class="col-lg-4">
+                                                <div class="form-check mt-2">
+                                                    {{ subscription_form.is_lifetime(class="form-check-input") }}
+                                                    <label class="form-check-label" for="{{ subscription_form.is_lifetime.id }}">
+                                                        Бессрочная подписка
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-4">
+                                                {{ subscription_form.expires_at.label(class="form-label") }}
+                                                {{ subscription_form.expires_at(class="form-control") }}
+                                            </div>
+                                            <div class="col-lg-4">
+                                                <button
+                                                    class="btn btn-sm btn-outline-dark w-100"
+                                                    type="submit"
+                                                >
+                                                    Сохранить срок действия
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endif %}
                                 {% endfor %}
                             </tbody>
                         </table>

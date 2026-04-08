@@ -21,6 +21,19 @@ def app(tmp_path: Path):
             "WTF_CSRF_ENABLED": False,
             "SECRET_KEY": "test-secret-key",
             "SQLALCHEMY_DATABASE_URI": f"sqlite:///{database_path}",
+            "BOOTSTRAP_SCHEMA_ON_STARTUP": True,
+            "VPN_AUTO_PROVISION": False,
+            "VPN_SSH_HOST": "",
+            "VPN_SSH_USER": "",
+            "VPN_SSH_KEY_PATH": "",
+            "VPN_REMOTE_ADD_SCRIPT": "",
+            "VPN_REMOTE_REMOVE_SCRIPT": "",
+            "VPN_REMOTE_BUILD_LINK_SCRIPT": "",
+            "VPN_REMOTE_LIST_SCRIPT": "",
+            "VLESS_HOST": "",
+            "VLESS_PBK": "",
+            "VLESS_SNI": "",
+            "VLESS_SID": "",
         }
     )
 

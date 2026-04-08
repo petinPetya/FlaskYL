@@ -1,5 +1,6 @@
 from flask_wtf import FlaskForm
 from wtforms import (
+    BooleanField,
     HiddenField,
     IntegerField,
     PasswordField,
@@ -7,6 +8,7 @@ from wtforms import (
     StringField,
     SubmitField,
 )
+from wtforms.fields.datetime import DateTimeLocalField
 from wtforms.validators import (
     DataRequired,
     Email,
@@ -160,3 +162,13 @@ class AdminDeviceManagementForm(FlaskForm):
         validators=[Optional(), Length(max=255)],
     )
     submit = SubmitField("Обновить устройство")
+
+
+class AdminSubscriptionExpiryForm(FlaskForm):
+    is_lifetime = BooleanField("Бессрочно")
+    expires_at = DateTimeLocalField(
+        "Срок действия до",
+        format="%Y-%m-%dT%H:%M",
+        validators=[Optional()],
+    )
+    submit = SubmitField("Обновить срок")

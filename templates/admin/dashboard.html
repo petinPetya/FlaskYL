@@ -8,10 +8,10 @@
         <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4">
             <div>
                 <span class="eyebrow">Админ-панель</span>
-                <h1 class="h2 mt-3 mb-2">Обзор проекта</h1>
+                <h1 class="h2 mt-3 mb-2">Обзор системы</h1>
                 <p class="text-secondary mb-0">
-                    Здесь видны запросы на тарифы, текущее состояние устройств
-                    и подготовка к подключению реального VPN-провижининга.
+                    Здесь видны запросы на тарифы, состояние устройств и
+                    серверные VLESS-ссылки.
                 </p>
             </div>
             <a class="btn btn-outline-dark" href="{{ url_for('main.admin_users') }}">Список пользователей</a>
@@ -258,11 +258,21 @@
                                 Подтягиваются прямо из live-конфига Xray.
                             </div>
                         </div>
-                        {% if server_vless_stats_enabled %}
-                        <span class="badge text-bg-success">stats enabled</span>
-                        {% else %}
-                        <span class="badge text-bg-secondary">stats unavailable</span>
-                        {% endif %}
+                        <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-2">
+                            {% if vpn_auto_provisioning_enabled %}
+                            <form method="post" action="{{ url_for('main.admin_sync_vpn_state') }}">
+                                {{ action_form.hidden_tag() }}
+                                <button class="btn btn-sm btn-outline-dark" type="submit">
+                                    Сверить с Xray
+                                </button>
+                            </form>
+                            {% endif %}
+                            {% if server_vless_stats_enabled %}
+                            <span class="badge text-bg-success">stats enabled</span>
+                            {% else %}
+                            <span class="badge text-bg-secondary">stats unavailable</span>
+                            {% endif %}
+                        </div>
                     </div>
                     {% if server_vless_error %}
                     <p class="text-danger mb-0">{{ server_vless_error }}</p>

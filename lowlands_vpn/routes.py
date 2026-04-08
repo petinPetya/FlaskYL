@@ -9,6 +9,7 @@ from lowlands_vpn.extensions import db
 from lowlands_vpn.forms import (
     AdminActionForm,
     AdminDeviceManagementForm,
+    AdminSubscriptionExpiryForm,
     BalanceAdjustmentForm,
     DeviceActionForm,
     DeviceCreateForm,
@@ -107,6 +108,10 @@ def is_subscription_removable(subscription: Subscription) -> bool:
     return subscription.status == "revoked"
 
 
+def can_manage_subscription_expiry(subscription: Subscription) -> bool:
+    return subscription.user.is_admin
+
+
 def is_device_removable(device: Device) -> bool:
     return device.status == "revoked"
 
@@ -124,6 +129,85 @@ def format_bytes(value: int | None) -> str:
         if size < 1024 or unit == units[-1]:
             return f"{size:.1f} {unit}"
     return f"{value} B"
+
+
+def synchronize_vpn_runtime_state() -> dict[str, int | list[str]]:
+    summary: dict[str, int | list[str]] = {
+        "updated_statuses": 0,
+        "auto_revoked_devices": 0,
+        "missing_server_clients": 0,
+        "removed_server_stale_clients": 0,
+        "orphan_server_clients": 0,
+        "refreshed_links": 0,
+        "errors": [],
+    }
+
+    for user in User.query.all():
+        user_sync = sync_user_subscriptions(user)
+        summary["updated_statuses"] += user_sync["updated_statuses"]
+        summary["auto_revoked_devices"] += user_sync["auto_revoked_devices"]
+
+    server_payload = list_server_vless_clients()
+    server_clients = server_payload["clients"]
+    server_by_uuid = {
+        client["uuid"]: client for client in server_clients if client.get("uuid")
+    }
+    local_devices = (
+        Device.query.join(Subscription).filter(Device.vpn_uuid.isnot(None)).all()
+    )
+    device_by_uuid = {device.vpn_uuid: device for device in local_devices if device.vpn_uuid}
+
+    for device in local_devices:
+        server_client = server_by_uuid.get(device.vpn_uuid)
+
+        if device.status == "revoked":
+            if device.vpn_link:
+                device.vpn_link = None
+            if server_client:
+                try:
+                    remove_server_vless_client_by_uuid(device.vpn_uuid)
+                except VpnProvisioningError as error:
+                    summary["errors"].append(
+                        f"{device.name}: не удалось удалить серверный хвост ({error})"
+                    )
+                else:
+                    summary["removed_server_stale_clients"] += 1
+            continue
+
+        if server_client is None:
+            device.mark_failed("Клиент отсутствует на сервере Xray. Нужна перевыдача.")
+            summary["missing_server_clients"] += 1
+            continue
+
+        if server_client.get("email") and device.vpn_email != server_client["email"]:
+            device.vpn_email = server_client["email"]
+
+        if server_client.get("link") and device.vpn_link != server_client["link"]:
+            device.vpn_link = server_client["link"]
+            summary["refreshed_links"] += 1
+
+    summary["orphan_server_clients"] = sum(
+        1
+        for client in server_clients
+        if client.get("uuid") and client["uuid"] not in device_by_uuid
+    )
+
+    db.session.commit()
+    return summary
+
+
+def get_dashboard_expiration_note(subscription: Subscription | None) -> str:
+    if subscription is None:
+        return "-"
+    if subscription.is_lifetime:
+        return "Без автоматического истечения"
+
+    remaining_days = subscription.get_remaining_days()
+    if remaining_days is None:
+        return "-"
+    if remaining_days == 0 and subscription.is_expired():
+        return "Срок уже истек"
+    return f"Осталось примерно {remaining_days} дн."
 
 
 @main_bp.route("/")
@@ -230,6 +314,9 @@ def dashboard():
     return render_template(
         "dashboard.html",
         current_subscription=current_subscription,
+        current_subscription_expiration_note=get_dashboard_expiration_note(
+            current_subscription
+        ),
         latest_invoice=latest_invoice,
         pending_request=pending_request,
         pending_request_tariff=pending_request_tariff,
@@ -479,6 +566,7 @@ def admin_user_detail(user_id):
     charge_form = BalanceAdjustmentForm(prefix="charge")
     invoice_action_form = AdminActionForm()
     device_forms = {}
+    subscription_forms = {}
 
     for device in devices:
         form = AdminDeviceManagementForm(prefix=f"device-{device.id}")
@@ -487,6 +575,13 @@ def admin_user_detail(user_id):
         form.assigned_ip.data = device.assigned_ip
         form.last_error.data = device.last_error
         device_forms[device.id] = form
+
+    for subscription in subscriptions:
+        form = AdminSubscriptionExpiryForm(prefix=f"subscription-{subscription.id}")
+        form.is_lifetime.data = subscription.is_lifetime
+        if not subscription.is_lifetime and subscription.expires_at:
+            form.expires_at.data = subscription.expires_at
+        subscription_forms[subscription.id] = form
 
     return render_template(
         "admin/user_detail.html",
@@ -501,11 +596,13 @@ def admin_user_detail(user_id):
         charge_form=charge_form,
         invoice_action_form=invoice_action_form,
         vpn_action_form=AdminActionForm(),
+        subscription_forms=subscription_forms,
         device_forms=device_forms,
         revoked_devices_count=revoked_devices_count,
         get_invoice_tariff=get_invoice_tariff,
         is_invoice_removable=is_invoice_removable,
         is_subscription_removable=is_subscription_removable,
+        can_manage_subscription_expiry=can_manage_subscription_expiry,
         is_device_removable=is_device_removable,
     )
 
@@ -707,6 +804,57 @@ def admin_delete_subscription(subscription_id):
     return redirect(url_for("main.admin_user_detail", user_id=user_id))
 
 
+@main_bp.route("/admin/subscriptions/<string:subscription_id>/expiry", methods=["POST"])
+@admin_required
+def admin_update_subscription_expiry(subscription_id):
+    subscription = db.session.get(Subscription, subscription_id)
+    if subscription is None:
+        flash("Подписка не найдена.", "warning")
+        return redirect(url_for("main.admin_dashboard"))
+
+    form = AdminSubscriptionExpiryForm(prefix=f"subscription-{subscription.id}")
+    if not form.validate_on_submit():
+        flash("Проверьте параметры срока подписки и повторите попытку.", "danger")
+        return redirect(
+            url_for("main.admin_user_detail", user_id=subscription.user_id)
+        )
+
+    if not can_manage_subscription_expiry(subscription):
+        flash(
+            "Ручная настройка срока доступна только для подписок администратора.",
+            "warning",
+        )
+        return redirect(
+            url_for("main.admin_user_detail", user_id=subscription.user_id)
+        )
+
+    if form.is_lifetime.data:
+        subscription.is_lifetime = True
+        if subscription.status == "expired":
+            subscription.status = "active"
+        db.session.commit()
+        flash("Подписка переведена в бессрочный режим.", "success")
+        return redirect(
+            url_for("main.admin_user_detail", user_id=subscription.user_id)
+        )
+
+    expires_at = form.expires_at.data
+    if expires_at is None:
+        flash("Укажите дату и время окончания или включите бессрочный режим.", "warning")
+        return redirect(
+            url_for("main.admin_user_detail", user_id=subscription.user_id)
+        )
+
+    subscription.is_lifetime = False
+    subscription.expires_at = expires_at
+    if subscription.status == "expired" and expires_at > utc_now():
+        subscription.status = "active"
+    subscription.sync_status()
+    db.session.commit()
+    flash("Срок подписки обновлён.", "success")
+    return redirect(url_for("main.admin_user_detail", user_id=subscription.user_id))
+
+
 @main_bp.route("/admin/devices/<string:device_id>/update", methods=["POST"])
 @admin_required
 def admin_update_device(device_id):
@@ -881,6 +1029,44 @@ def admin_delete_server_vless_client(client_uuid):
         db.session.commit()
 
     flash("VLESS-ссылка удалена с сервера.", "info")
+    return redirect(url_for("main.admin_dashboard"))
+
+
+@main_bp.route("/admin/vpn/sync", methods=["POST"])
+@admin_required
+def admin_sync_vpn_state():
+    form = AdminActionForm()
+    if not form.validate_on_submit():
+        flash("Некорректный запрос на сверку с Xray.", "danger")
+        return redirect(url_for("main.admin_dashboard"))
+
+    if not is_vpn_auto_provisioning_enabled():
+        flash("SSH/VPN интеграция не настроена в текущем запуске Flask.", "warning")
+        return redirect(url_for("main.admin_dashboard"))
+
+    try:
+        summary = synchronize_vpn_runtime_state()
+    except VpnProvisioningError as error:
+        flash(f"Сверка с Xray завершилась ошибкой: {error}", "danger")
+        return redirect(url_for("main.admin_dashboard"))
+
+    flash(
+        "Сверка с Xray завершена. "
+        f"Обновлено статусов подписок: {summary['updated_statuses']}. "
+        f"Авто-отозвано устройств: {summary['auto_revoked_devices']}. "
+        f"Очищено серверных хвостов: {summary['removed_server_stale_clients']}. "
+        f"Отсутствуют на сервере: {summary['missing_server_clients']}. "
+        f"Осиротевших серверных клиентов: {summary['orphan_server_clients']}.",
+        "info",
+    )
+    if summary["refreshed_links"]:
+        flash(
+            f"Обновлено ссылок из live Xray: {summary['refreshed_links']}.",
+            "success",
+        )
+    for error_message in summary["errors"]:
+        flash(error_message, "warning")
+
     return redirect(url_for("main.admin_dashboard"))
 
 

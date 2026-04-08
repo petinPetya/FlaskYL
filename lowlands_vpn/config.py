@@ -47,6 +47,10 @@ class Config:
     REMEMBER_COOKIE_SECURE = get_env_bool("REMEMBER_COOKIE_SECURE", False)
     PREFERRED_URL_SCHEME = os.environ.get("PREFERRED_URL_SCHEME", "http")
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+    BOOTSTRAP_SCHEMA_ON_STARTUP = get_env_bool(
+        "BOOTSTRAP_SCHEMA_ON_STARTUP",
+        SQLALCHEMY_DATABASE_URI.startswith("sqlite:///"),
+    )
     VPN_AUTO_PROVISION = get_env_bool("VPN_AUTO_PROVISION", True)
     VPN_SSH_HOST = os.environ.get("VPN_SSH_HOST", "").strip()
     VPN_SSH_PORT = get_env_int("VPN_SSH_PORT", 22)

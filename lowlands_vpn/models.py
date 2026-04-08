@@ -104,6 +104,7 @@ class Subscription(db.Model):
 
     starts_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
+    is_lifetime = db.Column(db.Boolean, default=False, nullable=False)
 
     used_traffic_bytes = db.Column(db.BigInteger, default=0, nullable=False)
     traffic_limit_bytes = db.Column(db.BigInteger, nullable=True)
@@ -132,6 +133,8 @@ class Subscription(db.Model):
         super().__init__(**kwargs)
 
     def is_expired(self):
+        if self.is_lifetime:
+            return False
         return utc_now() > self.expires_at
 
     def is_traffic_exceeded(self):
@@ -159,10 +162,17 @@ class Subscription(db.Model):
         return max(0, remaining)
 
     def get_remaining_days(self):
+        if self.is_lifetime:
+            return None
         if self.is_expired():
             return 0
         delta = self.expires_at - utc_now()
         return max(0, delta.days)
+
+    def get_expires_at_display(self):
+        if self.is_lifetime:
+            return "Бессрочно"
+        return self.expires_at.strftime("%d.%m.%Y %H:%M")
 
     def get_usage_percent(self):
         if self.traffic_limit_bytes is None or self.traffic_limit_bytes == 0:

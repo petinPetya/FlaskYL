@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from flask import current_app
 from sqlalchemy import inspect, text
 
 from lowlands_vpn.data import PLANS
@@ -19,14 +20,34 @@ ADDITIVE_SCHEMA_PATCHES = {
         "vpn_email": "ALTER TABLE devices ADD COLUMN vpn_email VARCHAR(255)",
         "vpn_link": "ALTER TABLE devices ADD COLUMN vpn_link TEXT",
     },
+    "subscriptions": {
+        "is_lifetime": "ALTER TABLE subscriptions ADD COLUMN is_lifetime BOOLEAN DEFAULT FALSE NOT NULL",
+    },
 }
 
 
 def init_database(instance_path: str) -> None:
     Path(instance_path).mkdir(parents=True, exist_ok=True)
-    db.create_all()
-    apply_additive_schema_patches()
-    seed_tariffs()
+    if current_app.config.get("BOOTSTRAP_SCHEMA_ON_STARTUP", False):
+        db.create_all()
+        apply_additive_schema_patches()
+        seed_tariffs()
+        return
+
+    if schema_exists():
+        seed_tariffs()
+        return
+
+    current_app.logger.warning(
+        "Database schema is not initialized. Run `alembic upgrade head` before serving traffic."
+    )
+
+
+def schema_exists() -> bool:
+    inspector = inspect(db.engine)
+    existing_tables = set(inspector.get_table_names())
+    required_tables = {"users", "tariffs", "subscriptions", "invoices", "devices"}
+    return required_tables.issubset(existing_tables)
 
 
 def apply_additive_schema_patches() -> None:

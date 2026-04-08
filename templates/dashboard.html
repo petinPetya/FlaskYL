@@ -57,8 +57,11 @@ endblock %} {% block content %}
                                 <div class="mini-label">Действует до</div>
                                 <div class="mini-value dashboard-value-sm">
                                     {% if current_subscription %} {{
-                                    current_subscription.expires_at.strftime('%d.%m.%Y')
+                                    current_subscription.get_expires_at_display()
                                     }} {% else %} - {% endif %}
+                                </div>
+                                <div class="mini-label mt-2">
+                                    {{ current_subscription_expiration_note }}
                                 </div>
                             </div>
                         </div>
@@ -100,7 +103,7 @@ endblock %} {% block content %}
             </div>
             <div class="col-lg-4">
                 <div class="dashboard-card h-100">
-                    <h2 class="h4 mb-3">Следующий шаг</h2>
+                    <h2 class="h4 mb-3">Быстрый старт</h2>
                     <ul class="list-unstyled plan-features mb-0">
                         <li>Оставьте запрос на нужный тариф</li>
                         <li>После активации добавьте свои устройства</li>
@@ -138,8 +141,8 @@ endblock %} {% block content %}
                         Запрос на подключение или продление
                     </h2>
                     <p class="text-secondary mb-0">
-                        Живые платежи пока отключены, поэтому кабинет создаёт
-                        запрос на тариф, который позже подтверждается вручную.
+                        Подключение и продление подтверждаются через заявку,
+                        после чего тариф активируется в кабинете.
                     </p>
                 </div>
             </div>
@@ -197,7 +200,7 @@ endblock %} {% block content %}
             <div class="row g-4">
                 <div class="col-lg-4">
                     <span class="eyebrow">Устройства</span>
-                    <h2 class="h4 mt-3 mb-3">Управление слотами</h2>
+                    <h2 class="h4 mt-3 mb-3">Управление устройствами</h2>
                     <p class="text-secondary">
                         Добавляйте устройства только после активации подписки.
                         Для каждого девайса хранится отдельный UUID и

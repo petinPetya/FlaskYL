@@ -1,3 +1,5 @@
+# ДЛЯ ЗАПУСКА app.py С АДМИНСКИМИ ФУНКЦИЯМИ НЕОБХОДИМ ФАЙЛ .flask-env, НО ОН НЕ БУДЕТ ДОБАВЛЕН В РЕПОЗИТОРИЙ, ТАК КАК СОДЕРЖИТ ЧУВСТВИТЕЛЬНЫЕ ДАННЫЕ.
+
 - `SECRET_KEY`
 - `DATABASE_URL`
 - `LOG_LEVEL`
@@ -6,6 +8,21 @@
 - `PREFERRED_URL_SCHEME`
 
 Если `DATABASE_URL` не задан, приложение использует локальную SQLite-базу в `instance/site.db`.
+
+Для PostgreSQL используй строку вида:
+
+```bash
+export DATABASE_URL='postgresql+psycopg://user:password@127.0.0.1:15433/lowlands_vpn'
+```
+
+Если база не SQLite, приложение больше не будет молча создавать схему на старте.
+Для production нужно явно прогнать миграции:
+
+```bash
+alembic upgrade head
+```
+
+Для локальной SQLite-разработки автоподъём схемы остаётся включённым.
 
 ### Переменные для VPN интеграции в Flask
 
@@ -32,6 +49,58 @@
 
 ```bash
 .venv/bin/pytest -q
+```
+
+## Миграции
+
+Инициализирован Alembic baseline:
+
+```bash
+alembic upgrade head
+```
+
+Создать новую ревизию после изменения моделей:
+
+```bash
+alembic revision --autogenerate -m "your message"
+```
+
+Если Postgres находится на VPS и локально ты работаешь через SSH tunnel:
+
+```bash
+./scripts/start-postgres-tunnel.sh \
+  --host 147.45.224.143 \
+  --key-path /home/senamorsin/.ssh/lowlands_vpn_xray
+```
+
+Перенос текущих данных из `instance/site.db`:
+
+```bash
+./.venv/bin/python scripts/migrate-sqlite-to-postgres.py \
+  --sqlite-path instance/site.db \
+  --postgres-url "$DATABASE_URL"
+```
+
+## Operations
+
+Подробный operational baseline и шаги по restricted SSH-доступу вынесены в:
+
+- `docs/operations.md`
+
+Быстрые команды:
+
+```bash
+./scripts/export-vpn-server-state.sh \
+  --host 147.45.224.143 \
+  --user root \
+  --key-path /home/senamorsin/.ssh/lowlands_vpn_xray
+```
+
+```bash
+./scripts/setup-restricted-vpn-ssh.sh \
+  --host 147.45.224.143 \
+  --root-key-path /home/senamorsin/.ssh/lowlands_vpn_xray \
+  --app-public-key-path /home/senamorsin/.ssh/lowlands_vpn_xray.pub
 ```
 
 ## VPN helper scripts

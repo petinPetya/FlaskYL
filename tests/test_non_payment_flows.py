@@ -1,7 +1,8 @@
 import json
+from datetime import timedelta
 
 from lowlands_vpn.extensions import db
-from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User
+from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
 
 
 def register_user(client, email: str, password: str = "strong-pass-123"):
@@ -124,6 +125,31 @@ def test_admin_can_approve_subscription_request(app, client):
     assert subscription.tariff_id == family.id
 
 
+def test_admin_subscription_is_lifetime_by_default(app, client):
+    register_user(client, "admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+
+    response = client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    subscription = db.session.scalar(
+        db.select(Subscription).where(Subscription.user_id == invoice.user_id)
+    )
+
+    assert response.status_code == 200
+    assert subscription is not None
+    assert subscription.is_lifetime is True
+
+
 def test_admin_can_delete_paid_subscription_request_note(app, client):
     register_user(client, "admin@example.com")
     logout_user(client)
@@ -194,6 +220,66 @@ def test_admin_can_delete_revoked_subscription_note(app, client):
     assert deleted_subscription is None
     assert updated_invoice is not None
     assert updated_invoice.subscription_id is None
+
+
+def test_admin_can_set_manual_expiration_for_admin_subscription(app, client):
+    register_user(client, "admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    subscription = db.session.scalar(
+        db.select(Subscription).where(Subscription.user_id == invoice.user_id)
+    )
+    future_value = (utc_now() + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M")
+
+    response = client.post(
+        f"/admin/subscriptions/{subscription.id}/expiry",
+        data={
+            f"subscription-{subscription.id}-is_lifetime": "",
+            f"subscription-{subscription.id}-expires_at": future_value,
+        },
+        follow_redirects=True,
+    )
+
+    updated_subscription = db.session.get(Subscription, subscription.id)
+
+    assert response.status_code == 200
+    assert "Срок подписки обновлён." in response.get_data(as_text=True)
+    assert updated_subscription.is_lifetime is False
+    assert updated_subscription.expires_at.strftime("%Y-%m-%dT%H:%M") == future_value
+
+
+def test_dashboard_shows_lifetime_expiration_for_admin(app, client):
+    register_user(client, "admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    response = client.get("/dashboard", follow_redirects=True)
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Бессрочно" in page
+    assert "Без автоматического истечения" in page
 
 
 def test_device_limit_is_enforced_and_can_be_reused_after_revoke(app, client):
@@ -766,3 +852,223 @@ def test_admin_can_retry_device_provisioning(app, client, monkeypatch):
     assert updated_device.status == "active"
     assert updated_device.provisioning_state == "ready"
     assert updated_device.vpn_link == "vless://retry-link"
+
+
+def test_admin_dashboard_auto_revokes_expired_subscription_devices(
+    app, client, monkeypatch
+):
+    enable_vpn_ssh_config(app)
+    recorded_commands = []
+
+    register_user(client, "admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    admin_user = db.session.scalar(
+        db.select(User).where(User.email == "admin@example.com")
+    )
+    subscription = db.session.scalar(
+        db.select(Subscription).where(Subscription.user_id == admin_user.id)
+    )
+    subscription.is_lifetime = False
+    subscription.status = "active"
+    subscription.expires_at = utc_now() - timedelta(days=1)
+    device = Device(
+        subscription_id=subscription.id,
+        name="Expired Laptop",
+        platform="windows",
+        status="active",
+        provisioning_state="ready",
+        vpn_uuid="expired-uuid-1",
+        vpn_email="expired-1@xray",
+        vpn_link="vless://expired-uuid-1@test:443",
+    )
+    db.session.add(device)
+    db.session.commit()
+
+    def fake_run(command, capture_output, check, text):
+        remote_command = command[-1]
+        recorded_commands.append(remote_command)
+        if "xray-remove-client" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"status": "ok", "removed_count": 1})
+            )
+        if "xray-list-clients" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps(
+                    {"status": "ok", "stats_enabled": False, "clients": []}
+                )
+            )
+        raise AssertionError(f"Unexpected command: {remote_command}")
+
+    monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
+
+    response = client.get("/admin", follow_redirects=True)
+
+    updated_subscription = db.session.get(Subscription, subscription.id)
+    updated_device = db.session.get(Device, device.id)
+
+    assert response.status_code == 200
+    assert updated_subscription.status == "expired"
+    assert updated_device.status == "revoked"
+    assert updated_device.provisioning_state == "revoked"
+    assert "истекла" in updated_device.last_error
+    assert any("xray-remove-client" in command for command in recorded_commands)
+
+
+def test_admin_sync_vpn_marks_missing_server_clients_as_failed(
+    app, client, monkeypatch
+):
+    enable_vpn_ssh_config(app)
+
+    register_user(client, "admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    admin_user = db.session.scalar(
+        db.select(User).where(User.email == "admin@example.com")
+    )
+    subscription = db.session.scalar(
+        db.select(Subscription).where(Subscription.user_id == admin_user.id)
+    )
+    device = Device(
+        subscription_id=subscription.id,
+        name="Missing On Server",
+        platform="windows",
+        status="active",
+        provisioning_state="ready",
+        vpn_uuid="missing-server-uuid",
+        vpn_email="missing-server@xray",
+        vpn_link="vless://missing-server-uuid@test:443",
+    )
+    db.session.add(device)
+    db.session.commit()
+
+    def fake_run(command, capture_output, check, text):
+        remote_command = command[-1]
+        if "xray-list-clients" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps(
+                    {"status": "ok", "stats_enabled": False, "clients": []}
+                )
+            )
+        raise AssertionError(f"Unexpected command: {remote_command}")
+
+    monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
+
+    response = client.post("/admin/vpn/sync", data={}, follow_redirects=True)
+
+    updated_device = db.session.get(Device, device.id)
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Сверка с Xray завершена." in page
+    assert "Отсутствуют на сервере: 1." in page
+    assert updated_device.status == "pending"
+    assert updated_device.provisioning_state == "failed"
+    assert "отсутствует на сервере Xray" in updated_device.last_error
+
+
+def test_admin_sync_vpn_removes_stale_server_clients_for_revoked_devices(
+    app, client, monkeypatch
+):
+    enable_vpn_ssh_config(app)
+    recorded_commands = []
+
+    register_user(client, "admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    admin_user = db.session.scalar(
+        db.select(User).where(User.email == "admin@example.com")
+    )
+    subscription = db.session.scalar(
+        db.select(Subscription).where(Subscription.user_id == admin_user.id)
+    )
+    device = Device(
+        subscription_id=subscription.id,
+        name="Revoked Server Device",
+        platform="windows",
+        status="revoked",
+        provisioning_state="revoked",
+        vpn_uuid="revoked-server-uuid",
+        vpn_email="revoked-server@xray",
+        vpn_link="vless://revoked-server-uuid@test:443",
+    )
+    db.session.add(device)
+    db.session.commit()
+
+    def fake_run(command, capture_output, check, text):
+        remote_command = command[-1]
+        recorded_commands.append(remote_command)
+        if "xray-list-clients" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps(
+                    {
+                        "status": "ok",
+                        "stats_enabled": False,
+                        "clients": [
+                            {
+                                "uuid": "revoked-server-uuid",
+                                "email": "revoked-server@xray",
+                                "name": "revoked-server@xray",
+                                "flow": "xtls-rprx-vision",
+                                "link": "vless://revoked-server-uuid@test:443",
+                                "stats": {
+                                    "available": False,
+                                    "uplink_bytes": None,
+                                    "downlink_bytes": None,
+                                    "total_bytes": None,
+                                },
+                            }
+                        ],
+                    }
+                )
+            )
+        if "xray-remove-client" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps({"status": "ok", "removed_count": 1})
+            )
+        raise AssertionError(f"Unexpected command: {remote_command}")
+
+    monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
+
+    response = client.post("/admin/vpn/sync", data={}, follow_redirects=True)
+
+    updated_device = db.session.get(Device, device.id)
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Очищено серверных хвостов: 1." in page
+    assert updated_device.vpn_link is None
+    assert any("xray-remove-client" in command for command in recorded_commands)

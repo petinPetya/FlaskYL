@@ -1,23 +1,80 @@
 from datetime import timedelta
 
 from lowlands_vpn.extensions import db
-from lowlands_vpn.models import Invoice, Subscription, Tariff, User, utc_now
+from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
 
 SUBSCRIPTION_REQUEST_TYPE = "subscription_request"
 
 
-def sync_user_subscriptions(user: User) -> None:
+def get_subscription_revoke_reason(subscription: Subscription) -> str:
+    if subscription.status == "expired":
+        return "Подписка истекла. Устройство автоматически отозвано."
+    if subscription.status == "traffic_exceeded":
+        return "Лимит трафика исчерпан. Устройство автоматически отозвано."
+    if subscription.status == "revoked":
+        return "Подписка отозвана. Устройство автоматически отозвано."
+    return "Подписка неактивна. Устройство автоматически отозвано."
+
+
+def revoke_subscription_devices(subscription: Subscription) -> int:
+    from lowlands_vpn.vpn import (
+        VpnProvisioningError,
+        is_vpn_auto_provisioning_enabled,
+        revoke_device_on_server,
+    )
+
+    active_devices = subscription.devices.filter(Device.status != "revoked").all()
+    if not active_devices:
+        return 0
+
+    revoke_reason = get_subscription_revoke_reason(subscription)
+    revoked_count = 0
+
+    for device in active_devices:
+        server_error = None
+        if is_vpn_auto_provisioning_enabled():
+            try:
+                revoke_device_on_server(device)
+            except VpnProvisioningError as error:
+                server_error = str(error)
+
+        device.mark_revoked()
+        device.last_error = (
+            f"{revoke_reason} Ошибка серверного отзыва: {server_error}"
+            if server_error
+            else revoke_reason
+        )
+        revoked_count += 1
+
+    return revoked_count
+
+
+def sync_user_subscriptions(user: User) -> dict[str, int]:
     subscriptions = user.subscriptions.order_by(Subscription.created_at.desc()).all()
     changed = False
+    updated_statuses = 0
+    auto_revoked_devices = 0
 
     for subscription in subscriptions:
         previous_status = subscription.status
         subscription.sync_status()
         if subscription.status != previous_status:
             changed = True
+            updated_statuses += 1
+
+        if not subscription.is_active():
+            revoked_now = revoke_subscription_devices(subscription)
+            if revoked_now:
+                changed = True
+                auto_revoked_devices += revoked_now
 
     if changed:
         db.session.commit()
+
+    return {
+        "updated_statuses": updated_statuses,
+        "auto_revoked_devices": auto_revoked_devices,
+    }
 
 
 def get_current_subscription(user: User) -> Subscription | None:
@@ -91,6 +148,7 @@ def approve_subscription_request(invoice: Invoice, reviewer_id: str) -> Subscrip
             expires_at=now + timedelta(days=tariff.days_valid),
             traffic_limit_bytes=tariff.traffic_limit_bytes,
             status="active",
+            is_lifetime=invoice.user.is_admin,
         )
         db.session.add(subscription)
         db.session.flush()
