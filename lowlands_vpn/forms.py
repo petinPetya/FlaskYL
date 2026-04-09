@@ -138,6 +138,10 @@ class DeviceActionForm(FlaskForm):
     submit = SubmitField("Подтвердить")
 
 
+class PaymentStartForm(FlaskForm):
+    submit = SubmitField("Оплатить через ЮKassa")
+
+
 class AdminDeviceManagementForm(FlaskForm):
     status = SelectField(
         "Статус устройства",

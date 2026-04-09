@@ -2,6 +2,7 @@ import logging
 
 from flask import Flask, render_template
 from flask_wtf.csrf import CSRFError
+import click
 
 from lowlands_vpn.config import BASE_DIR, Config
 from lowlands_vpn.database import init_database
@@ -27,12 +28,37 @@ def create_app(test_config: dict | None = None) -> Flask:
     from lowlands_vpn.routes import main_bp
 
     app.register_blueprint(main_bp)
+    register_cli_commands(app)
     register_error_handlers(app)
 
     with app.app_context():
         init_database(app.instance_path)
 
     return app
+
+
+def register_cli_commands(app: Flask) -> None:
+    @app.cli.command("make-admin")
+    @click.argument("email")
+    def make_admin(email: str) -> None:
+        """Grant admin rights to an existing user by email."""
+        from lowlands_vpn.models import User
+
+        normalized = (email or "").strip().lower()
+        if not normalized:
+            raise click.ClickException("Email must be non-empty.")
+
+        user = db.session.scalar(db.select(User).where(User.email == normalized))
+        if user is None:
+            raise click.ClickException(f"User not found: {normalized}")
+
+        if user.is_admin:
+            click.echo("User is already admin.")
+            return
+
+        user.is_admin = True
+        db.session.commit()
+        click.echo("OK: admin rights granted.")
 
 
 def configure_logging(app: Flask) -> None:

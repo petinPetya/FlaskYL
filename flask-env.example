@@ -1,0 +1,33 @@
+# Template environment file for local development.
+# Copy it to `flask-env` and fill in your own values:
+#   cp flask-env.example flask-env
+# Then load it in your shell before running Flask:
+#   set -a; source flask-env; set +a
+#
+# IMPORTANT: Do NOT commit your real `flask-env` file.
+#
+# If DATABASE_URL is not set, the app uses local SQLite:
+#   instance/site.db
+#
+# Flask / app
+export SECRET_KEY='change-me-in-production'
+export LOG_LEVEL='INFO'
+export PREFERRED_URL_SCHEME='http'
+
+# Cookies
+export SESSION_COOKIE_SECURE='0'
+export REMEMBER_COOKIE_SECURE='0'
+
+# YooKassa
+# Use YooKassa test credentials locally.
+export YOOKASSA_SHOP_ID=''
+export YOOKASSA_SECRET_KEY=''
+# Where YooKassa sends user after payment (must be allowed in YooKassa settings).
+export YOOKASSA_RETURN_URL='http://127.0.0.1:5000/dashboard'
+
+# Database
+# SQLite (default): leave DATABASE_URL unset.
+#
+# PostgreSQL example (requires a PostgreSQL DB and driver installed):
+export DATABASE_URL='postgresql+psycopg://user:password@127.0.0.1:15433/lowlands_vpn'
+

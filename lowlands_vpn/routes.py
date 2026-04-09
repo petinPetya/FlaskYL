@@ -1,11 +1,11 @@
 from functools import wraps
 from urllib.parse import urlsplit
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
 from lowlands_vpn.data import PLANS
-from lowlands_vpn.extensions import db
+from lowlands_vpn.extensions import csrf, db
 from lowlands_vpn.forms import (
     AdminActionForm,
     AdminDeviceManagementForm,
@@ -15,6 +15,7 @@ from lowlands_vpn.forms import (
     DeviceCreateForm,
     LoginForm,
     LogoutForm,
+    PaymentStartForm,
     RegisterForm,
     SubscriptionRequestForm,
 )
@@ -35,6 +36,7 @@ from lowlands_vpn.vpn import (
     remove_server_vless_client_by_uuid,
     revoke_device_on_server,
 )
+from lowlands_vpn.yookassa_service import create_yookassa_payment
 
 main_bp = Blueprint("main", __name__)
 
@@ -258,14 +260,10 @@ def register():
 
     form = RegisterForm()
     if form.validate_on_submit():
-        admin_exists = db.session.scalar(
-            db.select(User.id).where(User.is_admin.is_(True)).limit(1)
-        )
-
         user = User(
             email=form.email.data.strip().lower(),
             password=form.password.data,
-            is_admin=not bool(admin_exists),
+            is_admin=False,
             last_login_at=utc_now(),
         )
         db.session.add(user)
@@ -274,11 +272,6 @@ def register():
         flash(
             "Аккаунт создан. Теперь можно выбрать тариф в личном кабинете.", "success"
         )
-        if user.is_admin:
-            flash(
-                "Это первый аккаунт в системе, поэтому ему выданы права администратора.",
-                "info",
-            )
         return redirect(url_for("main.dashboard"))
 
     return render_template("register.html", form=form)
@@ -324,9 +317,127 @@ def dashboard():
         devices=devices,
         vpn_auto_provisioning_enabled=is_vpn_auto_provisioning_enabled(),
         request_form=SubscriptionRequestForm(),
+        payment_form=PaymentStartForm(),
         device_form=DeviceCreateForm(),
         device_action_form=DeviceActionForm(),
     )
+
+
+@main_bp.route("/pay/yookassa/<string:invoice_id>")
+@login_required
+def yookassa_checkout(invoice_id: str):
+    invoice = db.session.get(Invoice, invoice_id)
+    if invoice is None or invoice.user_id != current_user.id:
+        flash("Счёт не найден.", "warning")
+        return redirect(url_for("main.dashboard"))
+    if invoice.status != "pending" or invoice.type != SUBSCRIPTION_REQUEST_TYPE:
+        flash("Этот счёт нельзя оплатить.", "warning")
+        return redirect(url_for("main.dashboard"))
+
+    return render_template(
+        "payments/yookassa_checkout.html",
+        invoice=invoice,
+        form=PaymentStartForm(),
+    )
+
+
+@main_bp.route("/pay/yookassa/<string:invoice_id>/start", methods=["POST"])
+@login_required
+def start_yookassa_payment(invoice_id: str):
+    form = PaymentStartForm()
+    if not form.validate_on_submit():
+        flash("Некорректный запрос на оплату.", "danger")
+        return redirect(url_for("main.yookassa_checkout", invoice_id=invoice_id))
+
+    invoice = db.session.get(Invoice, invoice_id)
+    if invoice is None or invoice.user_id != current_user.id:
+        flash("Счёт не найден.", "warning")
+        return redirect(url_for("main.dashboard"))
+    if invoice.status != "pending" or invoice.type != SUBSCRIPTION_REQUEST_TYPE:
+        flash("Этот счёт нельзя оплатить.", "warning")
+        return redirect(url_for("main.dashboard"))
+
+    shop_id = current_app.config.get("YOOKASSA_SHOP_ID", "")
+    secret_key = current_app.config.get("YOOKASSA_SECRET_KEY", "")
+    return_url = current_app.config.get("YOOKASSA_RETURN_URL", "") or url_for(
+        "main.dashboard", _external=True
+    )
+    if not shop_id or not secret_key:
+        flash(
+            "ЮKassa не настроена: задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в окружении.",
+            "warning",
+        )
+        return redirect(url_for("main.yookassa_checkout", invoice_id=invoice_id))
+
+    amount_rub = f"{invoice.amount_cents / 100:.2f}"
+    try:
+        result = create_yookassa_payment(
+            shop_id=shop_id,
+            secret_key=secret_key,
+            amount_rub=amount_rub,
+            description=invoice.description or "Оплата тарифа",
+            return_url=return_url,
+            metadata={"invoice_id": invoice.id, "user_id": current_user.id},
+        )
+    except Exception as error:
+        flash(f"Не удалось создать платеж в ЮKassa: {error}", "danger")
+        return redirect(url_for("main.yookassa_checkout", invoice_id=invoice_id))
+
+    invoice.payment_system = "yookassa"
+    invoice.payment_system_id = result.payment_id
+    invoice.payment_url = result.confirmation_url
+    metadata = invoice.get_metadata()
+    metadata["yookassa_payment_id"] = result.payment_id
+    invoice.set_metadata(metadata)
+    db.session.commit()
+    return redirect(result.confirmation_url)
+
+
+@main_bp.route("/webhooks/yookassa", methods=["POST"])
+@csrf.exempt
+def yookassa_webhook():
+    payload = request.get_json(silent=True) or {}
+    event = payload.get("event")
+    obj = payload.get("object") or {}
+
+    if event not in {"payment.succeeded", "payment.canceled", "payment.waiting_for_capture"}:
+        return {"ok": True}, 200
+
+    metadata = obj.get("metadata") or {}
+    invoice_id = metadata.get("invoice_id")
+    payment_id = obj.get("id")
+    status = obj.get("status")
+    amount = (obj.get("amount") or {}).get("value")
+
+    if not invoice_id or not payment_id:
+        return {"ok": True}, 200
+
+    invoice = db.session.get(Invoice, invoice_id)
+    if invoice is None:
+        return {"ok": True}, 200
+
+    if invoice.payment_system not in {None, "", "yookassa"}:
+        return {"ok": True}, 200
+
+    if amount is not None:
+        expected = f"{invoice.amount_cents / 100:.2f}"
+        if str(amount) != expected:
+            return {"ok": True}, 200
+
+    invoice.payment_system = "yookassa"
+    invoice.payment_system_id = payment_id
+
+    if event == "payment.succeeded" and status == "succeeded":
+        if invoice.status != "paid":
+            invoice.mark_as_paid(payment_system_id=payment_id)
+            invoice.payment_url = None
+            meta = invoice.get_metadata()
+            meta["paid_via"] = "yookassa"
+            meta["yookassa_status"] = status
+            invoice.set_metadata(meta)
+            db.session.commit()
+
+    return {"ok": True}, 200
 
 
 @main_bp.route("/subscriptions/request", methods=["POST"])

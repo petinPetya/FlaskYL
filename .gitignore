@@ -1,3 +1,24 @@
+# Local environment overrides (do not commit secrets)
+flask-env
+.env
+.flaskenv
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenv
+.venv/
+venv/
+ENV/
+env/
+
+# Instance folder (contains SQLite DB, etc.)
+instance/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

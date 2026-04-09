@@ -29,6 +29,14 @@ def logout_user(client):
     return client.post("/logout", data={}, follow_redirects=True)
 
 
+def grant_admin(email: str) -> User:
+    user = db.session.scalar(db.select(User).where(User.email == email))
+    assert user is not None
+    user.is_admin = True
+    db.session.commit()
+    return user
+
+
 class FakeCompletedProcess:
     def __init__(self, returncode=0, stdout="", stderr=""):
         self.returncode = returncode
@@ -66,7 +74,7 @@ def test_registration_creates_account_without_subscription(app, client):
 
     user = db.session.scalar(db.select(User).where(User.email == "first@example.com"))
     assert user is not None
-    assert user.is_admin is True
+    assert user.is_admin is False
     assert Subscription.query.count() == 0
 
 
@@ -120,6 +128,7 @@ def test_user_can_create_pending_subscription_request(app, client):
 
 def test_admin_can_approve_subscription_request(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -154,6 +163,7 @@ def test_admin_can_approve_subscription_request(app, client):
 
 def test_non_admin_cannot_access_admin_routes(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
     register_user(client, "user@example.com")
 
@@ -165,6 +175,7 @@ def test_non_admin_cannot_access_admin_routes(app, client):
 
 def test_admin_user_pages_render(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
     register_user(client, "user@example.com")
     user = db.session.scalar(db.select(User).where(User.email == "user@example.com"))
@@ -182,6 +193,7 @@ def test_admin_user_pages_render(app, client):
 
 def test_admin_can_toggle_user_role_active_and_balance(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
     register_user(client, "user@example.com")
     user = db.session.scalar(db.select(User).where(User.email == "user@example.com"))
@@ -226,6 +238,7 @@ def test_admin_can_toggle_user_role_active_and_balance(app, client):
 
 def test_admin_subscription_is_lifetime_by_default(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
     client.post(
         "/subscriptions/request",
@@ -251,6 +264,7 @@ def test_admin_subscription_is_lifetime_by_default(app, client):
 
 def test_admin_can_delete_paid_subscription_request_note(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -284,6 +298,7 @@ def test_admin_can_delete_paid_subscription_request_note(app, client):
 
 def test_admin_can_delete_revoked_subscription_note(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -323,6 +338,7 @@ def test_admin_can_delete_revoked_subscription_note(app, client):
 
 def test_admin_can_cancel_pending_subscription_request(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -351,6 +367,7 @@ def test_admin_can_cancel_pending_subscription_request(app, client):
 
 def test_regular_user_subscription_expiry_cannot_be_managed_manually(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -393,6 +410,7 @@ def test_regular_user_subscription_expiry_cannot_be_managed_manually(app, client
 
 def test_admin_can_set_manual_expiration_for_admin_subscription(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
     client.post(
         "/subscriptions/request",
@@ -430,6 +448,7 @@ def test_admin_can_set_manual_expiration_for_admin_subscription(app, client):
 
 def test_dashboard_shows_lifetime_expiration_for_admin(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
     client.post(
         "/subscriptions/request",
@@ -453,6 +472,7 @@ def test_dashboard_shows_lifetime_expiration_for_admin(app, client):
 
 def test_device_limit_is_enforced_and_can_be_reused_after_revoke(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -504,6 +524,7 @@ def test_device_limit_is_enforced_and_can_be_reused_after_revoke(app, client):
 
 def test_admin_is_not_limited_by_tariff_device_cap(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
 
     client.post(
@@ -539,6 +560,7 @@ def test_admin_is_not_limited_by_tariff_device_cap(app, client):
 
 def test_admin_can_update_device_provisioning_state(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -618,6 +640,7 @@ def test_admin_dashboard_shows_server_vless_clients(app, client, monkeypatch):
     monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
 
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     response = client.get("/admin", follow_redirects=True)
 
     page = response.get_data(as_text=True)
@@ -633,6 +656,7 @@ def test_admin_can_delete_server_vless_client_and_sync_local_device(
     enable_vpn_ssh_config(app)
 
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
     client.post(
         "/subscriptions/request",
@@ -722,6 +746,7 @@ def test_device_is_provisioned_via_vpn_server_when_configured(app, client, monke
     monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
 
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -769,6 +794,7 @@ def test_device_provision_failure_is_saved_on_device(app, client, monkeypatch):
     monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
 
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -821,6 +847,7 @@ def test_user_revoke_calls_vpn_remove_script(app, client, monkeypatch):
     monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
 
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -862,6 +889,7 @@ def test_user_revoke_calls_vpn_remove_script(app, client, monkeypatch):
 
 def test_admin_can_delete_single_revoked_device_record(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -902,6 +930,7 @@ def test_admin_can_delete_single_revoked_device_record(app, client):
 
 def test_admin_can_delete_all_revoked_device_records(app, client):
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -971,6 +1000,7 @@ def test_admin_can_retry_device_provisioning(app, client, monkeypatch):
     app.config.update({"VPN_AUTO_PROVISION": False})
 
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
@@ -1030,6 +1060,7 @@ def test_admin_dashboard_auto_revokes_expired_subscription_devices(
     recorded_commands = []
 
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
     client.post(
         "/subscriptions/request",
@@ -1101,6 +1132,7 @@ def test_admin_sync_vpn_marks_missing_server_clients_as_failed(
     enable_vpn_ssh_config(app)
 
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
     client.post(
         "/subscriptions/request",
@@ -1165,6 +1197,7 @@ def test_admin_sync_vpn_removes_stale_server_clients_for_revoked_devices(
     recorded_commands = []
 
     register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
     client.post(
         "/subscriptions/request",
