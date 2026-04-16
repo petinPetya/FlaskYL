@@ -25,6 +25,13 @@ def login_user(client, email: str, password: str = "strong-pass-123"):
     )
 
 
+def api_login(client, email: str, password: str = "strong-pass-123"):
+    return client.post(
+        "/api/auth/login",
+        json={"email": email, "password": password},
+    )
+
+
 def logout_user(client):
     return client.post("/logout", data={}, follow_redirects=True)
 
@@ -723,6 +730,84 @@ def test_admin_can_delete_server_vless_client_and_sync_local_device(
     assert updated_device.vpn_link is None
 
 
+def test_admin_can_import_orphan_server_clients_into_devices(app, client, monkeypatch):
+    enable_vpn_ssh_config(app)
+
+    register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    def fake_run(command, capture_output, check, text):
+        remote_command = command[-1]
+        if "xray-list-clients" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps(
+                    {
+                        "status": "ok",
+                        "stats_enabled": True,
+                        "clients": [
+                            {
+                                "uuid": "orphan-uuid-1",
+                                "email": "user1@xray",
+                                "name": "user1@xray",
+                                "flow": "xtls-rprx-vision",
+                                "link": "vless://orphan-uuid-1@test:443",
+                                "stats": {
+                                    "available": True,
+                                    "uplink_bytes": 1,
+                                    "downlink_bytes": 2,
+                                    "total_bytes": 3,
+                                },
+                            },
+                            {
+                                "uuid": "orphan-uuid-2",
+                                "email": "user2@xray",
+                                "name": "user2@xray",
+                                "flow": "xtls-rprx-vision",
+                                "link": "vless://orphan-uuid-2@test:443",
+                                "stats": {
+                                    "available": True,
+                                    "uplink_bytes": 4,
+                                    "downlink_bytes": 5,
+                                    "total_bytes": 9,
+                                },
+                            },
+                        ],
+                    }
+                )
+            )
+        raise AssertionError(f"Unexpected command: {remote_command}")
+
+    monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
+
+    response = client.post(
+        "/admin/vpn/clients/import-orphans",
+        data={},
+        follow_redirects=True,
+    )
+
+    imported_devices = Device.query.order_by(Device.vpn_email.asc()).all()
+
+    assert response.status_code == 200
+    assert "Импортировано: 2, пропущено: 0." in response.get_data(as_text=True)
+    assert len(imported_devices) == 2
+    assert imported_devices[0].platform == "imported"
+    assert imported_devices[0].status == "active"
+    assert imported_devices[0].provisioning_state == "ready"
+    assert imported_devices[0].vpn_link == "vless://orphan-uuid-1@test:443"
+
+
 def test_device_is_provisioned_via_vpn_server_when_configured(app, client, monkeypatch):
     enable_vpn_ssh_config(app)
     recorded_commands = []
@@ -1274,3 +1359,126 @@ def test_admin_sync_vpn_removes_stale_server_clients_for_revoked_devices(
     assert "Очищено серверных хвостов: 1." in page
     assert updated_device.vpn_link is None
     assert any("xray-remove-client" in command for command in recorded_commands)
+
+
+def test_api_public_tariffs_endpoint_returns_active_tariffs(app, client):
+    response = client.get("/api/tariffs")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert len(payload["data"]["tariffs"]) == 3
+    assert {tariff["name"] for tariff in payload["data"]["tariffs"]} == {
+        "Starter",
+        "Family",
+        "Pro",
+    }
+
+
+def test_api_requires_auth_without_redirects(app, client):
+    response = client.get("/api/auth/me")
+
+    assert response.status_code == 401
+    payload = response.get_json()
+    assert payload == {"ok": False, "error": "Требуется авторизация."}
+
+
+def test_api_login_me_and_logout_flow(app, client):
+    register_user(client, "api-auth@example.com")
+    logout_user(client)
+
+    login_response = api_login(client, "api-auth@example.com")
+    me_response = client.get("/api/auth/me")
+    logout_response = client.post("/api/auth/logout")
+    unauthorized_after_logout = client.get("/api/auth/me")
+
+    assert login_response.status_code == 200
+    assert login_response.get_json()["data"]["user"]["email"] == "api-auth@example.com"
+    assert me_response.status_code == 200
+    assert me_response.get_json()["data"]["user"]["email"] == "api-auth@example.com"
+    assert logout_response.status_code == 200
+    assert logout_response.get_json()["message"] == "Сессия завершена."
+    assert unauthorized_after_logout.status_code == 401
+
+
+def test_api_can_create_subscription_request_and_list_invoices(app, client):
+    register_user(client, "api-billing@example.com")
+    tariff = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+
+    create_response = client.post(
+        "/api/subscriptions/request",
+        json={"tariff_id": tariff.id},
+    )
+    invoices_response = client.get("/api/invoices")
+
+    assert create_response.status_code == 201
+    create_payload = create_response.get_json()
+    assert create_payload["ok"] is True
+    assert create_payload["data"]["invoice"]["status"] == "pending"
+    assert create_payload["data"]["invoice"]["tariff"]["name"] == "Starter"
+
+    invoices_payload = invoices_response.get_json()
+    assert invoices_response.status_code == 200
+    assert len(invoices_payload["data"]["invoices"]) == 1
+    assert invoices_payload["data"]["invoices"][0]["type"] == "subscription_request"
+
+
+def test_api_can_create_and_revoke_device(app, client):
+    register_user(client, "api-device@example.com")
+    user = db.session.scalar(
+        db.select(User).where(User.email == "api-device@example.com")
+    )
+    tariff = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    subscription = Subscription(
+        user_id=user.id,
+        tariff_id=tariff.id,
+        starts_at=utc_now(),
+        expires_at=utc_now() + timedelta(days=tariff.days_valid),
+        traffic_limit_bytes=tariff.traffic_limit_bytes,
+        status="active",
+    )
+    db.session.add(subscription)
+    db.session.commit()
+
+    create_response = client.post(
+        "/api/devices",
+        json={"name": "Phone API", "platform": "android"},
+    )
+    device_payload = create_response.get_json()
+    device_id = device_payload["data"]["device"]["id"]
+    revoke_response = client.post(f"/api/devices/{device_id}/revoke")
+
+    assert create_response.status_code == 201
+    assert device_payload["data"]["device"]["name"] == "Phone API"
+    assert device_payload["data"]["device"]["status"] == "pending"
+    assert device_payload["data"]["device"]["provisioning_state"] == "requested"
+
+    revoke_payload = revoke_response.get_json()
+    assert revoke_response.status_code == 200
+    assert revoke_payload["data"]["device"]["status"] == "revoked"
+    assert revoke_payload["data"]["device"]["provisioning_state"] == "revoked"
+
+
+def test_admin_api_overview_and_users_endpoints(app, client):
+    register_user(client, "api-admin@example.com")
+    grant_admin("api-admin@example.com")
+    logout_user(client)
+    register_user(client, "api-user@example.com")
+    logout_user(client)
+    api_login(client, "api-admin@example.com")
+
+    overview_response = client.get("/api/admin/overview")
+    users_response = client.get("/api/admin/users")
+
+    assert overview_response.status_code == 200
+    overview_payload = overview_response.get_json()
+    assert overview_payload["data"]["stats"]["users_total"] == 2
+    assert overview_payload["data"]["stats"]["admins_total"] == 1
+
+    assert users_response.status_code == 200
+    users_payload = users_response.get_json()
+    assert len(users_payload["data"]["users"]) == 2
+    assert {user["email"] for user in users_payload["data"]["users"]} == {
+        "api-admin@example.com",
+        "api-user@example.com",
+    }

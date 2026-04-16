@@ -97,12 +97,8 @@ endblock %} {% block content %}
                         <div class="mini-label">
                             Статус: {{ pending_request.status }}
                         </div>
-                        <div class="mt-3 d-flex flex-column flex-md-row gap-2">
-                            <a
-                                class="btn btn-outline-dark"
-                                href="{{ url_for('main.yookassa_checkout', invoice_id=pending_request.id) }}"
-                                >Оплатить онлайн</a
-                            >
+                        <div class="mt-3 mini-label">
+                            Заявка ожидает ручной проверки администратором.
                         </div>
                     </div>
                     {% endif %}

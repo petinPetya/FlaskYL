@@ -25,8 +25,11 @@ def create_app(test_config: dict | None = None) -> Flask:
     login_manager.init_app(app)
     configure_logging(app)
 
+    from lowlands_vpn.api import api_bp
     from lowlands_vpn.routes import main_bp
 
+    csrf.exempt(api_bp)
+    app.register_blueprint(api_bp)
     app.register_blueprint(main_bp)
     register_cli_commands(app)
     register_error_handlers(app)

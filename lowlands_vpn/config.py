@@ -47,10 +47,6 @@ class Config:
     REMEMBER_COOKIE_SECURE = get_env_bool("REMEMBER_COOKIE_SECURE", False)
     PREFERRED_URL_SCHEME = os.environ.get("PREFERRED_URL_SCHEME", "http")
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
-    YOOKASSA_SHOP_ID = os.environ.get("YOOKASSA_SHOP_ID", "").strip()
-    YOOKASSA_SECRET_KEY = os.environ.get("YOOKASSA_SECRET_KEY", "").strip()
-    YOOKASSA_RETURN_URL = os.environ.get("YOOKASSA_RETURN_URL", "").strip()
-    YOOKASSA_WEBHOOK_PATH = os.environ.get("YOOKASSA_WEBHOOK_PATH", "/webhooks/yookassa").strip()
     BOOTSTRAP_SCHEMA_ON_STARTUP = get_env_bool(
         "BOOTSTRAP_SCHEMA_ON_STARTUP",
         SQLALCHEMY_DATABASE_URI.startswith("sqlite:///"),

@@ -1,11 +1,11 @@
 from functools import wraps
 from urllib.parse import urlsplit
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
 from lowlands_vpn.data import PLANS
-from lowlands_vpn.extensions import csrf, db
+from lowlands_vpn.extensions import db
 from lowlands_vpn.forms import (
     AdminActionForm,
     AdminDeviceManagementForm,
@@ -15,7 +15,6 @@ from lowlands_vpn.forms import (
     DeviceCreateForm,
     LoginForm,
     LogoutForm,
-    PaymentStartForm,
     RegisterForm,
     SubscriptionRequestForm,
 )
@@ -36,8 +35,6 @@ from lowlands_vpn.vpn import (
     remove_server_vless_client_by_uuid,
     revoke_device_on_server,
 )
-from lowlands_vpn.yookassa_service import create_yookassa_payment
-
 main_bp = Blueprint("main", __name__)
 
 
@@ -198,6 +195,63 @@ def synchronize_vpn_runtime_state() -> dict[str, int | list[str]]:
     return summary
 
 
+def import_orphan_server_clients_to_admin_devices(admin_user: User) -> dict[str, int]:
+    if not admin_user.is_admin:
+        raise VpnProvisioningError(
+            "Импорт серверных клиентов разрешён только администратору."
+        )
+
+    target_subscription = get_current_subscription(admin_user)
+    if target_subscription is None or not target_subscription.is_active():
+        raise VpnProvisioningError(
+            "У администратора нет активной подписки для привязки серверных клиентов."
+        )
+
+    server_payload = list_server_vless_clients()
+    server_clients = server_payload["clients"]
+    existing_uuids = {
+        value
+        for value in db.session.scalars(
+            db.select(Device.vpn_uuid).where(Device.vpn_uuid.isnot(None))
+        ).all()
+        if value
+    }
+
+    imported_count = 0
+    skipped_count = 0
+
+    for client in server_clients:
+        client_uuid = client.get("uuid")
+        if not client_uuid:
+            skipped_count += 1
+            continue
+
+        if client_uuid in existing_uuids:
+            skipped_count += 1
+            continue
+
+        label = client.get("email") or client.get("name") or client_uuid
+        device = Device(
+            subscription_id=target_subscription.id,
+            name=label,
+            platform="imported",
+            status="active",
+            provisioning_state="ready",
+            vpn_uuid=client_uuid,
+            vpn_email=client.get("email"),
+            vpn_link=client.get("link"),
+        )
+        if client.get("stats", {}).get("available"):
+            device.last_error = None
+        device.provisioned_at = utc_now()
+        db.session.add(device)
+        existing_uuids.add(client_uuid)
+        imported_count += 1
+
+    db.session.commit()
+    return {"imported_count": imported_count, "skipped_count": skipped_count}
+
+
 def get_dashboard_expiration_note(subscription: Subscription | None) -> str:
     if subscription is None:
         return "-"
@@ -317,127 +371,9 @@ def dashboard():
         devices=devices,
         vpn_auto_provisioning_enabled=is_vpn_auto_provisioning_enabled(),
         request_form=SubscriptionRequestForm(),
-        payment_form=PaymentStartForm(),
         device_form=DeviceCreateForm(),
         device_action_form=DeviceActionForm(),
     )
-
-
-@main_bp.route("/pay/yookassa/<string:invoice_id>")
-@login_required
-def yookassa_checkout(invoice_id: str):
-    invoice = db.session.get(Invoice, invoice_id)
-    if invoice is None or invoice.user_id != current_user.id:
-        flash("Счёт не найден.", "warning")
-        return redirect(url_for("main.dashboard"))
-    if invoice.status != "pending" or invoice.type != SUBSCRIPTION_REQUEST_TYPE:
-        flash("Этот счёт нельзя оплатить.", "warning")
-        return redirect(url_for("main.dashboard"))
-
-    return render_template(
-        "payments/yookassa_checkout.html",
-        invoice=invoice,
-        form=PaymentStartForm(),
-    )
-
-
-@main_bp.route("/pay/yookassa/<string:invoice_id>/start", methods=["POST"])
-@login_required
-def start_yookassa_payment(invoice_id: str):
-    form = PaymentStartForm()
-    if not form.validate_on_submit():
-        flash("Некорректный запрос на оплату.", "danger")
-        return redirect(url_for("main.yookassa_checkout", invoice_id=invoice_id))
-
-    invoice = db.session.get(Invoice, invoice_id)
-    if invoice is None or invoice.user_id != current_user.id:
-        flash("Счёт не найден.", "warning")
-        return redirect(url_for("main.dashboard"))
-    if invoice.status != "pending" or invoice.type != SUBSCRIPTION_REQUEST_TYPE:
-        flash("Этот счёт нельзя оплатить.", "warning")
-        return redirect(url_for("main.dashboard"))
-
-    shop_id = current_app.config.get("YOOKASSA_SHOP_ID", "")
-    secret_key = current_app.config.get("YOOKASSA_SECRET_KEY", "")
-    return_url = current_app.config.get("YOOKASSA_RETURN_URL", "") or url_for(
-        "main.dashboard", _external=True
-    )
-    if not shop_id or not secret_key:
-        flash(
-            "ЮKassa не настроена: задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в окружении.",
-            "warning",
-        )
-        return redirect(url_for("main.yookassa_checkout", invoice_id=invoice_id))
-
-    amount_rub = f"{invoice.amount_cents / 100:.2f}"
-    try:
-        result = create_yookassa_payment(
-            shop_id=shop_id,
-            secret_key=secret_key,
-            amount_rub=amount_rub,
-            description=invoice.description or "Оплата тарифа",
-            return_url=return_url,
-            metadata={"invoice_id": invoice.id, "user_id": current_user.id},
-        )
-    except Exception as error:
-        flash(f"Не удалось создать платеж в ЮKassa: {error}", "danger")
-        return redirect(url_for("main.yookassa_checkout", invoice_id=invoice_id))
-
-    invoice.payment_system = "yookassa"
-    invoice.payment_system_id = result.payment_id
-    invoice.payment_url = result.confirmation_url
-    metadata = invoice.get_metadata()
-    metadata["yookassa_payment_id"] = result.payment_id
-    invoice.set_metadata(metadata)
-    db.session.commit()
-    return redirect(result.confirmation_url)
-
-
-@main_bp.route("/webhooks/yookassa", methods=["POST"])
-@csrf.exempt
-def yookassa_webhook():
-    payload = request.get_json(silent=True) or {}
-    event = payload.get("event")
-    obj = payload.get("object") or {}
-
-    if event not in {"payment.succeeded", "payment.canceled", "payment.waiting_for_capture"}:
-        return {"ok": True}, 200
-
-    metadata = obj.get("metadata") or {}
-    invoice_id = metadata.get("invoice_id")
-    payment_id = obj.get("id")
-    status = obj.get("status")
-    amount = (obj.get("amount") or {}).get("value")
-
-    if not invoice_id or not payment_id:
-        return {"ok": True}, 200
-
-    invoice = db.session.get(Invoice, invoice_id)
-    if invoice is None:
-        return {"ok": True}, 200
-
-    if invoice.payment_system not in {None, "", "yookassa"}:
-        return {"ok": True}, 200
-
-    if amount is not None:
-        expected = f"{invoice.amount_cents / 100:.2f}"
-        if str(amount) != expected:
-            return {"ok": True}, 200
-
-    invoice.payment_system = "yookassa"
-    invoice.payment_system_id = payment_id
-
-    if event == "payment.succeeded" and status == "succeeded":
-        if invoice.status != "paid":
-            invoice.mark_as_paid(payment_system_id=payment_id)
-            invoice.payment_url = None
-            meta = invoice.get_metadata()
-            meta["paid_via"] = "yookassa"
-            meta["yookassa_status"] = status
-            invoice.set_metadata(meta)
-            db.session.commit()
-
-    return {"ok": True}, 200
 
 
 @main_bp.route("/subscriptions/request", methods=["POST"])
@@ -1140,6 +1076,32 @@ def admin_delete_server_vless_client(client_uuid):
         db.session.commit()
 
     flash("VLESS-ссылка удалена с сервера.", "info")
+    return redirect(url_for("main.admin_dashboard"))
+
+
+@main_bp.route("/admin/vpn/clients/import-orphans", methods=["POST"])
+@admin_required
+def admin_import_orphan_server_clients():
+    form = AdminActionForm()
+    if not form.validate_on_submit():
+        flash("Некорректный запрос на импорт серверных клиентов.", "danger")
+        return redirect(url_for("main.admin_dashboard"))
+
+    if not is_vpn_auto_provisioning_enabled():
+        flash("SSH/VPN интеграция не настроена в текущем запуске Flask.", "warning")
+        return redirect(url_for("main.admin_dashboard"))
+
+    try:
+        result = import_orphan_server_clients_to_admin_devices(current_user)
+    except VpnProvisioningError as error:
+        flash(str(error), "danger")
+        return redirect(url_for("main.admin_dashboard"))
+
+    flash(
+        "Осиротевшие серверные клиенты обработаны. "
+        f"Импортировано: {result['imported_count']}, пропущено: {result['skipped_count']}.",
+        "success",
+    )
     return redirect(url_for("main.admin_dashboard"))
 
 

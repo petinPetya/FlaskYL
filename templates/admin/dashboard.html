@@ -260,6 +260,12 @@
                         </div>
                         <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-2">
                             {% if vpn_auto_provisioning_enabled %}
+                            <form method="post" action="{{ url_for('main.admin_import_orphan_server_clients') }}">
+                                {{ action_form.hidden_tag() }}
+                                <button class="btn btn-sm btn-outline-dark" type="submit">
+                                    Импортировать осиротевших
+                                </button>
+                            </form>
                             <form method="post" action="{{ url_for('main.admin_sync_vpn_state') }}">
                                 {{ action_form.hidden_tag() }}
                                 <button class="btn btn-sm btn-outline-dark" type="submit">

@@ -87,6 +87,9 @@ db.sqlite3-journal
 instance/
 .webassets-cache
 
+# VPN client configs (may contain keys or sensitive metadata)
+*.ovpn
+
 # Scrapy stuff:
 .scrapy
 
@@ -226,6 +229,9 @@ cython_debug/
 
 # Local backups
 backups/
+
+# Local protocol migration sandboxes
+sandbox-awg20/
 
 # Marimo
 marimo/_static/

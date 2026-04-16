@@ -18,16 +18,8 @@ export PREFERRED_URL_SCHEME='http'
 export SESSION_COOKIE_SECURE='0'
 export REMEMBER_COOKIE_SECURE='0'
 
-# YooKassa
-# Use YooKassa test credentials locally.
-export YOOKASSA_SHOP_ID=''
-export YOOKASSA_SECRET_KEY=''
-# Where YooKassa sends user after payment (must be allowed in YooKassa settings).
-export YOOKASSA_RETURN_URL='http://127.0.0.1:5000/dashboard'
-
 # Database
 # SQLite (default): leave DATABASE_URL unset.
 #
 # PostgreSQL example (requires a PostgreSQL DB and driver installed):
 export DATABASE_URL='postgresql+psycopg://user:password@127.0.0.1:15433/lowlands_vpn'
-
