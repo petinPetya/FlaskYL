@@ -162,7 +162,7 @@ def test_admin_can_approve_subscription_request(app, client):
     subscription = db.session.scalar(
         db.select(Subscription).where(Subscription.user_id == approved_invoice.user_id)
     )
-    assert approved_invoice.status == "paid"
+    assert approved_invoice.status == "approved"
     assert subscription is not None
     assert subscription.status == "active"
     assert subscription.tariff_id == family.id
@@ -269,7 +269,7 @@ def test_admin_subscription_is_lifetime_by_default(app, client):
     assert subscription.is_lifetime is True
 
 
-def test_admin_can_delete_paid_subscription_request_note(app, client):
+def test_admin_can_delete_approved_subscription_request_note(app, client):
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
     logout_user(client)
@@ -298,7 +298,7 @@ def test_admin_can_delete_paid_subscription_request_note(app, client):
     deleted_invoice = db.session.get(Invoice, invoice.id)
 
     assert response.status_code == 200
-    assert "Запись об оплаченной заявке удалена" in response.get_data(as_text=True)
+    assert "Запись о подтвержденной заявке удалена" in response.get_data(as_text=True)
     assert deleted_invoice is None
     assert subscription is not None
 

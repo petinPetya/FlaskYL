@@ -242,15 +242,17 @@ class Invoice(db.Model):
     status = db.Column(db.String(32), default="pending", nullable=False, index=True)
     type = db.Column(db.String(32), nullable=False)
 
-    payment_system = db.Column(db.String(32), nullable=True)
-    payment_system_id = db.Column(db.String(255), nullable=True, index=True)
-    payment_url = db.Column(db.Text, nullable=True)
+    review_channel = db.Column("payment_system", db.String(32), nullable=True)
+    review_reference = db.Column(
+        "payment_system_id", db.String(255), nullable=True, index=True
+    )
+    external_url = db.Column("payment_url", db.Text, nullable=True)
 
     description = db.Column(db.Text, default="")
     _metadata = db.Column(db.Text, default="{}", name="metadata_json")
 
     created_at = db.Column(db.DateTime, default=utc_now)
-    paid_at = db.Column(db.DateTime, nullable=True)
+    processed_at = db.Column("paid_at", db.DateTime, nullable=True)
 
     def get_metadata(self):
         return json.loads(self._metadata) if self._metadata else {}
@@ -261,11 +263,11 @@ class Invoice(db.Model):
     def get_requested_tariff_id(self):
         return self.get_metadata().get("tariff_id")
 
-    def mark_as_paid(self, payment_system_id=None):
-        self.status = "paid"
-        self.paid_at = utc_now()
-        if payment_system_id:
-            self.payment_system_id = payment_system_id
+    def mark_as_approved(self, reference_id=None):
+        self.status = "approved"
+        self.processed_at = utc_now()
+        if reference_id:
+            self.review_reference = reference_id
 
     def mark_as_failed(self, reason=None):
         self.status = "failed"

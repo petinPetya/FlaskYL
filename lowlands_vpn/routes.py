@@ -97,10 +97,7 @@ def get_invoice_tariff(invoice: Invoice) -> Tariff | None:
 
 
 def is_invoice_removable(invoice: Invoice) -> bool:
-    return (
-        invoice.type == SUBSCRIPTION_REQUEST_TYPE
-        and invoice.status == "paid"
-    )
+    return invoice.type == SUBSCRIPTION_REQUEST_TYPE and invoice.status == "approved"
 
 
 def is_subscription_removable(subscription: Subscription) -> bool:
@@ -508,7 +505,7 @@ def admin_dashboard():
         "subscriptions_total": Subscription.query.count(),
         "subscriptions_active": Subscription.query.filter_by(status="active").count(),
         "invoices_total": Invoice.query.count(),
-        "invoices_paid": Invoice.query.filter_by(status="paid").count(),
+        "invoices_approved": Invoice.query.filter_by(status="approved").count(),
         "requests_pending": Invoice.query.filter_by(
             type=SUBSCRIPTION_REQUEST_TYPE, status="pending"
         ).count(),
@@ -812,13 +809,13 @@ def admin_delete_invoice(invoice_id):
         return redirect(url_for("main.admin_dashboard"))
 
     if not is_invoice_removable(invoice):
-        flash("Удалять можно только оплаченные запросы на подписку.", "warning")
+        flash("Удалять можно только подтвержденные запросы на подписку.", "warning")
         return redirect(url_for("main.admin_user_detail", user_id=invoice.user_id))
 
     user_id = invoice.user_id
     db.session.delete(invoice)
     db.session.commit()
-    flash("Запись об оплаченной заявке удалена.", "info")
+    flash("Запись о подтвержденной заявке удалена.", "info")
     return redirect(url_for("main.admin_user_detail", user_id=user_id))
 
 

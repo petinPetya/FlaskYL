@@ -151,12 +151,10 @@ def serialize_invoice(invoice: Invoice) -> dict:
         "amount_rub": f"{invoice.amount_cents / 100:.2f}",
         "status": invoice.status,
         "type": invoice.type,
-        "payment_system": invoice.payment_system,
-        "payment_system_id": invoice.payment_system_id,
         "description": invoice.description,
         "metadata": invoice.get_metadata(),
         "created_at": serialize_datetime(invoice.created_at),
-        "paid_at": serialize_datetime(invoice.paid_at),
+        "processed_at": serialize_datetime(invoice.processed_at),
         "tariff": serialize_tariff(tariff) if tariff else None,
     }
 
@@ -432,7 +430,7 @@ def api_admin_overview():
         "subscriptions_total": Subscription.query.count(),
         "subscriptions_active": Subscription.query.filter_by(status="active").count(),
         "invoices_total": Invoice.query.count(),
-        "invoices_paid": Invoice.query.filter_by(status="paid").count(),
+            "invoices_approved": Invoice.query.filter_by(status="approved").count(),
         "requests_pending": Invoice.query.filter_by(
             type=SUBSCRIPTION_REQUEST_TYPE, status="pending"
         ).count(),

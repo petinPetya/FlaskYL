@@ -115,7 +115,7 @@ def create_subscription_request(user: User, tariff: Tariff) -> Invoice:
         amount_cents=tariff.price_cents,
         status="pending",
         type=SUBSCRIPTION_REQUEST_TYPE,
-        payment_system="manual_review",
+        review_channel="manual_review",
         description=f"Запрос на тариф {tariff.name}",
     )
     invoice.set_metadata(
@@ -156,8 +156,8 @@ def approve_subscription_request(invoice: Invoice, reviewer_id: str) -> Subscrip
         subscription.renew(tariff)
 
     invoice.subscription_id = subscription.id
-    invoice.payment_system = "manual_review"
-    invoice.mark_as_paid(payment_system_id=f"manual:{reviewer_id}")
+    invoice.review_channel = "manual_review"
+    invoice.mark_as_approved(reference_id=f"manual:{reviewer_id}")
     metadata["reviewed_by"] = reviewer_id
     metadata["reviewed_at"] = utc_now().isoformat()
     invoice.set_metadata(metadata)
