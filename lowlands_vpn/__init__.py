@@ -44,24 +44,24 @@ def register_cli_commands(app: Flask) -> None:
     @app.cli.command("make-admin")
     @click.argument("email")
     def make_admin(email: str) -> None:
-        """Grant admin rights to an existing user by email."""
+        """Выдать права администратора существующему пользователю по email."""
         from lowlands_vpn.models import User
 
         normalized = (email or "").strip().lower()
         if not normalized:
-            raise click.ClickException("Email must be non-empty.")
+            raise click.ClickException("Email не должен быть пустым.")
 
         user = db.session.scalar(db.select(User).where(User.email == normalized))
         if user is None:
-            raise click.ClickException(f"User not found: {normalized}")
+            raise click.ClickException(f"Пользователь не найден: {normalized}")
 
         if user.is_admin:
-            click.echo("User is already admin.")
+            click.echo("Пользователь уже является администратором.")
             return
 
         user.is_admin = True
         db.session.commit()
-        click.echo("OK: admin rights granted.")
+        click.echo("OK: права администратора выданы.")
 
 
 def configure_logging(app: Flask) -> None:
@@ -73,7 +73,7 @@ def configure_logging(app: Flask) -> None:
 
     if app.config["SECRET_KEY"] == "change-me-in-production":
         app.logger.warning(
-            "Using the default SECRET_KEY. Set SECRET_KEY in the environment."
+            "Используется стандартный SECRET_KEY. Задай SECRET_KEY через переменные окружения."
         )
 
 

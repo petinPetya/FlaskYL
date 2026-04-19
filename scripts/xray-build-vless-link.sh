@@ -25,21 +25,21 @@ VLESS_ENCRYPTION="${VLESS_ENCRYPTION:-none}"
 
 usage() {
     cat <<'EOF'
-Usage:
+Использование:
   xray-build-vless-link.sh --uuid <uuid> [--name <name>]
                            [--host <host>] [--port <port>] [--pbk <public_key>]
                            [--sni <server_name>] [--sid <short_id>] [--fp <fp>]
                            [--flow <flow>] [--json]
 
-Builds a VLESS + REALITY share link from static server parameters and a device UUID.
-Most parameters can be provided via environment variables:
+Собирает VLESS + REALITY ссылку из статических параметров сервера и UUID устройства.
+Большую часть параметров можно передать через переменные окружения:
   VLESS_HOST VLESS_PORT VLESS_PBK VLESS_SNI VLESS_SID VLESS_FP VLESS_FLOW
-The script automatically loads `XRAY_ENV_FILE` if present.
+Если существует `XRAY_ENV_FILE`, скрипт загрузит его автоматически.
 EOF
 }
 
 fail() {
-    printf 'ERROR: %s\n' "$1" >&2
+    printf 'ОШИБКА: %s\n' "$1" >&2
     exit 1
 }
 
@@ -114,47 +114,47 @@ AS_JSON=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --uuid)
-            [[ $# -ge 2 ]] || fail "--uuid requires a value"
+            [[ $# -ge 2 ]] || fail "Для --uuid нужно указать значение"
             UUID="$2"
             shift 2
             ;;
         --name)
-            [[ $# -ge 2 ]] || fail "--name requires a value"
+            [[ $# -ge 2 ]] || fail "Для --name нужно указать значение"
             NAME="$2"
             shift 2
             ;;
         --host)
-            [[ $# -ge 2 ]] || fail "--host requires a value"
+            [[ $# -ge 2 ]] || fail "Для --host нужно указать значение"
             VLESS_HOST="$2"
             shift 2
             ;;
         --port)
-            [[ $# -ge 2 ]] || fail "--port requires a value"
+            [[ $# -ge 2 ]] || fail "Для --port нужно указать значение"
             VLESS_PORT="$2"
             shift 2
             ;;
         --pbk)
-            [[ $# -ge 2 ]] || fail "--pbk requires a value"
+            [[ $# -ge 2 ]] || fail "Для --pbk нужно указать значение"
             VLESS_PBK="$2"
             shift 2
             ;;
         --sni)
-            [[ $# -ge 2 ]] || fail "--sni requires a value"
+            [[ $# -ge 2 ]] || fail "Для --sni нужно указать значение"
             VLESS_SNI="$2"
             shift 2
             ;;
         --sid)
-            [[ $# -ge 2 ]] || fail "--sid requires a value"
+            [[ $# -ge 2 ]] || fail "Для --sid нужно указать значение"
             VLESS_SID="$2"
             shift 2
             ;;
         --fp)
-            [[ $# -ge 2 ]] || fail "--fp requires a value"
+            [[ $# -ge 2 ]] || fail "Для --fp нужно указать значение"
             VLESS_FP="$2"
             shift 2
             ;;
         --flow)
-            [[ $# -ge 2 ]] || fail "--flow requires a value"
+            [[ $# -ge 2 ]] || fail "Для --flow нужно указать значение"
             VLESS_FLOW="$2"
             shift 2
             ;;
@@ -167,19 +167,19 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            fail "Unknown argument: $1"
+            fail "Неизвестный аргумент: $1"
             ;;
     esac
 done
 
 hydrate_reality_values_from_config
 
-[[ -n "$UUID" ]] || fail "--uuid is required"
-[[ -n "$VLESS_HOST" ]] || fail "VLESS_HOST or --host is required"
-[[ -n "$VLESS_PBK" ]] || fail "VLESS_PBK or --pbk is required"
-[[ -n "$VLESS_SNI" ]] || fail "VLESS_SNI or --sni is required"
+[[ -n "$UUID" ]] || fail "Нужно указать --uuid"
+[[ -n "$VLESS_HOST" ]] || fail "Нужно указать VLESS_HOST или --host"
+[[ -n "$VLESS_PBK" ]] || fail "Нужно указать VLESS_PBK или --pbk"
+[[ -n "$VLESS_SNI" ]] || fail "Нужно указать VLESS_SNI или --sni"
 if [[ -z "$VLESS_SID" ]] && ! config_allows_short_id ""; then
-    fail "VLESS_SID or --sid is required"
+    fail "Нужно указать VLESS_SID или --sid"
 fi
 
 UUID_ENCODED="$(urlencode "$UUID")"

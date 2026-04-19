@@ -39,7 +39,7 @@ def init_database(instance_path: str) -> None:
         return
 
     current_app.logger.warning(
-        "Database schema is not initialized. Run `alembic upgrade head` before serving traffic."
+        "Схема базы данных не инициализирована. Выполни `alembic upgrade head` перед запуском приложения."
     )
 
 

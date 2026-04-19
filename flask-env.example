@@ -1,25 +1,25 @@
-# Template environment file for local development.
-# Copy it to `flask-env` and fill in your own values:
+# Шаблон файла окружения для локальной разработки.
+# Скопируй его в `flask-env` и подставь свои значения:
 #   cp flask-env.example flask-env
-# Then load it in your shell before running Flask:
+# Затем загрузи его в shell перед запуском Flask:
 #   set -a; source flask-env; set +a
 #
-# IMPORTANT: Do NOT commit your real `flask-env` file.
+# ВАЖНО: не коммить настоящий файл `flask-env`.
 #
-# If DATABASE_URL is not set, the app uses local SQLite:
+# Если `DATABASE_URL` не задан, приложение использует локальную SQLite-базу:
 #   instance/site.db
 #
-# Flask / app
+# Flask / приложение
 export SECRET_KEY='change-me-in-production'
 export LOG_LEVEL='INFO'
 export PREFERRED_URL_SCHEME='http'
 
-# Cookies
+# Файлы cookie
 export SESSION_COOKIE_SECURE='0'
 export REMEMBER_COOKIE_SECURE='0'
 
-# Database
-# SQLite (default): leave DATABASE_URL unset.
+# База данных
+# SQLite (по умолчанию): не задавай DATABASE_URL.
 #
-# PostgreSQL example (requires a PostgreSQL DB and driver installed):
+# Пример для PostgreSQL (нужны сама БД и установленный драйвер):
 export DATABASE_URL='postgresql+psycopg://user:password@127.0.0.1:15433/lowlands_vpn'

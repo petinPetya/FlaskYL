@@ -19,23 +19,23 @@ XRAY_BIN="${XRAY_BIN:-$(command -v xray || true)}"
 
 usage() {
     cat <<'EOF'
-Usage:
+Использование:
   xray-add-client.sh --email <email> [--uuid <uuid>] [--name <name>] [--flow <flow>]
                      [--config <path>] [--service <name>] [--tag <tag>]
 
-Adds a VLESS client to the configured Xray inbound, validates the config,
-and restarts the Xray service. If --uuid is omitted, the script generates one
-with `xray uuid`. The script automatically loads `XRAY_ENV_FILE` if present.
+Добавляет VLESS-клиента в настроенный inbound Xray, проверяет конфиг
+и перезапускает сервис Xray. Если --uuid не задан, скрипт сгенерирует его
+через `xray uuid`. Если существует `XRAY_ENV_FILE`, скрипт загрузит его автоматически.
 EOF
 }
 
 fail() {
-    printf 'ERROR: %s\n' "$1" >&2
+    printf 'ОШИБКА: %s\n' "$1" >&2
     exit 1
 }
 
 require_command() {
-    command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+    command -v "$1" >/dev/null 2>&1 || fail "Не найдена обязательная команда: $1"
 }
 
 schedule_restart() {
@@ -50,42 +50,42 @@ FLOW="$XRAY_FLOW_DEFAULT"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --email)
-            [[ $# -ge 2 ]] || fail "--email requires a value"
+            [[ $# -ge 2 ]] || fail "Для --email нужно указать значение"
             EMAIL="$2"
             shift 2
             ;;
         --uuid)
-            [[ $# -ge 2 ]] || fail "--uuid requires a value"
+            [[ $# -ge 2 ]] || fail "Для --uuid нужно указать значение"
             UUID="$2"
             shift 2
             ;;
         --name)
-            [[ $# -ge 2 ]] || fail "--name requires a value"
+            [[ $# -ge 2 ]] || fail "Для --name нужно указать значение"
             NAME="$2"
             shift 2
             ;;
         --flow)
-            [[ $# -ge 2 ]] || fail "--flow requires a value"
+            [[ $# -ge 2 ]] || fail "Для --flow нужно указать значение"
             FLOW="$2"
             shift 2
             ;;
         --config)
-            [[ $# -ge 2 ]] || fail "--config requires a value"
+            [[ $# -ge 2 ]] || fail "Для --config нужно указать значение"
             XRAY_CONFIG_PATH="$2"
             shift 2
             ;;
         --service)
-            [[ $# -ge 2 ]] || fail "--service requires a value"
+            [[ $# -ge 2 ]] || fail "Для --service нужно указать значение"
             XRAY_SERVICE_NAME="$2"
             shift 2
             ;;
         --tag)
-            [[ $# -ge 2 ]] || fail "--tag requires a value"
+            [[ $# -ge 2 ]] || fail "Для --tag нужно указать значение"
             XRAY_INBOUND_TAG="$2"
             shift 2
             ;;
         --lock-file)
-            [[ $# -ge 2 ]] || fail "--lock-file requires a value"
+            [[ $# -ge 2 ]] || fail "Для --lock-file нужно указать значение"
             XRAY_LOCK_FILE="$2"
             shift 2
             ;;
@@ -94,7 +94,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            fail "Unknown argument: $1"
+            fail "Неизвестный аргумент: $1"
             ;;
     esac
 done
@@ -102,16 +102,16 @@ done
 require_command jq
 require_command flock
 require_command systemctl
-[[ -n "$XRAY_BIN" ]] || fail "xray binary not found; set XRAY_BIN or install xray"
-[[ -f "$XRAY_CONFIG_PATH" ]] || fail "Config not found: $XRAY_CONFIG_PATH"
-[[ -n "$EMAIL" ]] || fail "--email is required"
-[[ "$EMAIL" != *" "* ]] || fail "Email must not contain spaces"
+[[ -n "$XRAY_BIN" ]] || fail "Бинарник xray не найден; задай XRAY_BIN или установи xray"
+[[ -f "$XRAY_CONFIG_PATH" ]] || fail "Конфиг не найден: $XRAY_CONFIG_PATH"
+[[ -n "$EMAIL" ]] || fail "Нужно указать --email"
+[[ "$EMAIL" != *" "* ]] || fail "Email не должен содержать пробелы"
 
 if [[ -z "$UUID" ]]; then
     UUID="$("$XRAY_BIN" uuid)"
 fi
 
-[[ "$UUID" != *" "* ]] || fail "UUID must not contain spaces"
+[[ "$UUID" != *" "* ]] || fail "UUID не должен содержать пробелы"
 
 LOCK_DIR="$(dirname "$XRAY_LOCK_FILE")"
 CONFIG_DIR="$(dirname "$XRAY_CONFIG_PATH")"
@@ -129,21 +129,21 @@ exec 9>"$XRAY_LOCK_FILE"
 flock -x 9
 
 jq -e --arg tag "$XRAY_INBOUND_TAG" '.inbounds[]? | select(.tag == $tag)' "$XRAY_CONFIG_PATH" >/dev/null \
-    || fail "Inbound tag not found: $XRAY_INBOUND_TAG"
+    || fail "Inbound tag не найден: $XRAY_INBOUND_TAG"
 
 jq -e --arg tag "$XRAY_INBOUND_TAG" --arg uuid "$UUID" '
     .inbounds[]?
     | select(.tag == $tag)
     | .settings.clients[]?
     | select(.id == $uuid)
-' "$XRAY_CONFIG_PATH" >/dev/null && fail "UUID already exists: $UUID"
+' "$XRAY_CONFIG_PATH" >/dev/null && fail "UUID уже существует: $UUID"
 
 jq -e --arg tag "$XRAY_INBOUND_TAG" --arg email "$EMAIL" '
     .inbounds[]?
     | select(.tag == $tag)
     | .settings.clients[]?
     | select(.email == $email)
-' "$XRAY_CONFIG_PATH" >/dev/null && fail "Email already exists: $EMAIL"
+' "$XRAY_CONFIG_PATH" >/dev/null && fail "Email уже существует: $EMAIL"
 
 cp -a "$XRAY_CONFIG_PATH" "$BACKUP_PATH"
 

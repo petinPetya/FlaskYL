@@ -81,9 +81,9 @@ alembic revision --autogenerate -m "your message"
   --postgres-url "$DATABASE_URL"
 ```
 
-## Operations
+## Эксплуатация
 
-Подробный operational baseline и шаги по restricted SSH-доступу вынесены в:
+Подробный baseline и шаги по ограниченному SSH-доступу вынесены в:
 
 - `docs/operations.md`
 

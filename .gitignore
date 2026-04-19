@@ -1,33 +1,33 @@
-# Local environment overrides (do not commit secrets)
+# Локальные переопределения окружения (не коммитить секреты)
 flask-env
 .env
 .flaskenv
 
-# Python
+# Файлы Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-# Virtualenv
+# Виртуальные окружения
 .venv/
 venv/
 ENV/
 env/
 
-# Instance folder (contains SQLite DB, etc.)
+# Папка instance (содержит SQLite-базу и прочее)
 instance/
 
-# Byte-compiled / optimized / DLL files
+# Скомпилированные / оптимизированные / DLL-файлы
 __pycache__/
 *.py[codz]
 *$py.class
 
-# C extensions
+# C-расширения
 *.so
 
-# Distribution / packaging
+# Сборка / упаковка
 .Python
 build/
 develop-eggs/
@@ -48,17 +48,17 @@ share/python-wheels/
 MANIFEST
 .python-version
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+# Файлы PyInstaller
+#  Обычно эти файлы создаются Python-скриптом из шаблона
+#  перед сборкой exe, чтобы подставить дату и другую служебную информацию.
 *.manifest
 *.spec
 
-# Installer logs
+# Логи установщиков
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
+# Отчёты тестов / покрытия
 htmlcov/
 .tox/
 .nox/
@@ -73,69 +73,68 @@ coverage.xml
 .pytest_cache/
 cover/
 
-# Translations
+# Файлы переводов
 *.mo
 *.pot
 
-# Django stuff:
+# Файлы Django:
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-# Flask stuff:
+# Файлы Flask:
 instance/
 .webassets-cache
 
-# VPN client configs (may contain keys or sensitive metadata)
+# Конфиги VPN-клиентов (могут содержать ключи и чувствительные метаданные)
 *.ovpn
 
-# Scrapy stuff:
+# Файлы Scrapy:
 .scrapy
 
-# Sphinx documentation
+# Документация Sphinx
 docs/_build/
 
-# PyBuilder
+# Файлы PyBuilder
 .pybuilder/
 target/
 
-# Jupyter Notebook
+# Файлы Jupyter Notebook
 .ipynb_checkpoints
 
-# IPython
+# Файлы IPython
 profile_default/
 ipython_config.py
 
 # pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
+#   Для библиотеки или пакета эти файлы часто игнорируют, так как код
+#   должен работать в нескольких окружениях. Иначе их можно хранить в репозитории:
 # .python-version
 
 # pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
+#   Согласно pypa/pipenv#598, Pipfile.lock рекомендуется хранить в системе контроля версий.
+#   Но при совместной работе, платформозависимых зависимостях или зависимостях без
+#   кроссплатформенной поддержки pipenv может поставить нерабочие пакеты или пропустить нужные.
 #Pipfile.lock
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
+# Файлы UV
+#   Как и Pipfile.lock, uv.lock обычно рекомендуют хранить в репозитории.
+#   Это особенно полезно для бинарных пакетов ради воспроизводимости, а для библиотек
+#   такой файл чаще игнорируют.
 #uv.lock
 
 # poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
+#   Как и Pipfile.lock, poetry.lock обычно рекомендуют хранить в репозитории.
+#   Это особенно полезно для бинарных пакетов ради воспроизводимости, а для библиотек
+#   такой файл чаще игнорируют.
 #   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
 #poetry.lock
 #poetry.toml
 
 # pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
+#   Как и Pipfile.lock, pdm.lock обычно рекомендуют хранить в репозитории.
+#   PDM советует хранить общую конфигурацию проекта в pdm.toml, но исключать .pdm-python.
 #   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
 #pdm.lock
 #pdm.toml
@@ -143,23 +142,23 @@ ipython_config.py
 .pdm-build/
 
 # pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
+#   Как и Pipfile.lock, pixi.lock обычно рекомендуют хранить в репозитории.
 #pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
+#   Pixi создаёт виртуальное окружение в каталоге .pixi, так же как venv создаёт его
+#   в .venv. Обычно этот каталог не стоит хранить в системе контроля версий.
 .pixi
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+# PEP 582; используется, например, в github.com/David-OConnor/pyflow и github.com/pdm-project/pdm
 __pypackages__/
 
-# Celery stuff
+# Файлы Celery
 celerybeat-schedule
 celerybeat.pid
 
-# SageMath parsed files
+# Обработанные файлы SageMath
 *.sage.py
 
-# Environments
+# Окружения
 .env
 .flask-env
 .envrc
@@ -170,14 +169,14 @@ ENV/
 env.bak/
 venv.bak/
 
-# Spyder project settings
+# Настройки проекта Spyder
 .spyderproject
 .spyproject
 
-# Rope project settings
+# Настройки проекта Rope
 .ropeproject
 
-# mkdocs documentation
+# Документация mkdocs
 /site
 
 # mypy
@@ -185,52 +184,52 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
-# Pyre type checker
+# Средство проверки типов Pyre
 .pyre/
 
-# pytype static type analyzer
+# Статический анализатор типов pytype
 .pytype/
 
-# Cython debug symbols
+# Отладочные символы Cython
 cython_debug/
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
+# Файлы PyCharm
+#  Отдельный шаблон JetBrains поддерживается в JetBrains.gitignore:
+#  https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
+#  Его можно добавить в глобальный gitignore или объединить с этим файлом.
+#  Более жёсткий вариант (не рекомендуется) - раскомментировать строку ниже и игнорировать всю папку idea.
 #.idea/
 
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
+# Файлы Abstra
+# Abstra - это фреймворк автоматизации процессов с AI.
+# Здесь игнорируются каталоги с пользовательскими учётными данными, локальным состоянием и настройками.
+# Подробнее: https://abstra.io/docs
 .abstra/
 
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
+# Файлы Visual Studio Code
+#  Отдельный шаблон для Visual Studio Code поддерживается в VisualStudioCode.gitignore:
+#  https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
+#  Его можно добавить в глобальный gitignore или объединить с этим файлом.
+#  При желании можно раскомментировать строку ниже и игнорировать всю папку vscode.
 # .vscode/
 
-# Ruff stuff:
+# Файлы Ruff:
 .ruff_cache/
 
-# PyPI configuration file
+# Файл конфигурации PyPI
 .pypirc
 
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
+# Файлы Cursor
+#  Cursor - это AI-редактор кода. `.cursorignore` задаёт файлы и каталоги,
+#  которые нужно исключить из AI-функций вроде автодополнения и анализа кода.
+#  Для чувствительных данных см. https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
 
-# Local backups
+# Локальные резервные копии
 backups/
 
-# Local protocol migration sandboxes
+# Локальные песочницы для миграции протоколов
 sandbox-awg20/
 
 # Marimo

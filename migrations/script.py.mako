@@ -1,8 +1,8 @@
 """${message}
 
-Revision ID: ${up_revision}
-Revises: ${down_revision | comma,n}
-Create Date: ${create_date}
+Идентификатор ревизии: ${up_revision}
+Пересматривает: ${down_revision | comma,n}
+Дата создания: ${create_date}
 """
 from __future__ import annotations
 

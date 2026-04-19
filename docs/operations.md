@@ -1,21 +1,21 @@
-# Operations
+# Эксплуатация
 
-## Current VPN Baseline
+## Текущий VPN baseline
 
 - VPN server: `147.45.224.143`
 - Xray config: `/usr/local/etc/xray/config.json`
 - Xray env: `/etc/lowlands-vpn/xray.env`
-- Helper scripts:
+- Вспомогательные скрипты:
   - `/usr/local/sbin/xray-add-client`
   - `/usr/local/sbin/xray-remove-client`
   - `/usr/local/sbin/xray-build-vless-link`
   - `/usr/local/sbin/xray-list-clients`
-- Live inbound tag: `vless-reality-in`
+- Тег live inbound: `vless-reality-in`
 - Xray API: `127.0.0.1:10085`
 
-## Export A Baseline Snapshot
+## Экспорт baseline-снимка
 
-Use the local export script from the Flask machine:
+Используй локальный экспортный скрипт с машины, где запущен Flask:
 
 ```bash
 ./scripts/export-vpn-server-state.sh \
@@ -24,13 +24,13 @@ Use the local export script from the Flask machine:
   --key-path /home/senamorsin/.ssh/lowlands_vpn_xray
 ```
 
-The script creates:
+Скрипт создаёт:
 
 - a timestamped directory under `backups/vpn-server-state-*`
 - a `.tar.gz` archive
 - a matching `.sha256` checksum
 
-It exports:
+В архив попадают:
 
 - live `config.json`
 - live `xray.env`
@@ -41,16 +41,15 @@ It exports:
 - `xray version`
 - live Xray client list
 
-Private SSH keys are intentionally not copied into this archive. Keep them in a
-separate secret store.
+Приватные SSH-ключи намеренно не копируются в архив. Храни их отдельно.
 
-## Restricted SSH User
+## Ограниченный SSH-пользователь
 
-The goal is to stop giving the Flask app full `root` SSH access. The restricted
-account can only execute the Xray helper scripts through a forced command
-dispatcher, and only through a narrow `sudoers` allowlist for those scripts.
+Задача - перестать давать Flask-приложению полный SSH-доступ под `root`.
+Ограниченный пользователь может запускать только вспомогательные Xray-скрипты
+через forced-command dispatcher и только через узкий allowlist в `sudoers`.
 
-Install it from the Flask machine:
+Устанавливается с машины, где запущен Flask:
 
 ```bash
 ./scripts/setup-restricted-vpn-ssh.sh \
@@ -59,21 +58,21 @@ Install it from the Flask machine:
   --app-public-key-path /home/senamorsin/.ssh/lowlands_vpn_xray.pub
 ```
 
-Defaults:
+Значения по умолчанию:
 
 - restricted user: `lowlands-vpn`
 - dispatcher path: `/usr/local/sbin/xray-ssh-dispatch`
 - helper paths remain unchanged
 
-After installation, switch Flask to:
+После установки переведи Flask на этого пользователя:
 
 ```bash
 export VPN_SSH_USER='lowlands-vpn'
 ```
 
-## Verify Restricted Access
+## Проверка ограниченного доступа
 
-List clients:
+Получить список клиентов:
 
 ```bash
 ssh -F /dev/null -i /home/senamorsin/.ssh/lowlands_vpn_xray \
@@ -81,7 +80,7 @@ ssh -F /dev/null -i /home/senamorsin/.ssh/lowlands_vpn_xray \
   /usr/local/sbin/xray-list-clients --json
 ```
 
-Add a disposable client:
+Добавить временного клиента:
 
 ```bash
 ssh -F /dev/null -i /home/senamorsin/.ssh/lowlands_vpn_xray \
@@ -89,7 +88,7 @@ ssh -F /dev/null -i /home/senamorsin/.ssh/lowlands_vpn_xray \
   /usr/local/sbin/xray-add-client --email smoke-test@xray --uuid 00000000-0000-0000-0000-000000000099 --name smoke-test
 ```
 
-Remove it:
+Удалить его:
 
 ```bash
 ssh -F /dev/null -i /home/senamorsin/.ssh/lowlands_vpn_xray \
@@ -97,15 +96,15 @@ ssh -F /dev/null -i /home/senamorsin/.ssh/lowlands_vpn_xray \
   /usr/local/sbin/xray-remove-client --uuid 00000000-0000-0000-0000-000000000099
 ```
 
-Anything outside the allowed helper commands must be rejected.
+Любая команда вне разрешённого списка должна отклоняться.
 
-## Restore Checklist
+## Чек-лист восстановления
 
-1. Provision Ubuntu.
-2. Install Xray and restore `/usr/local/etc/xray/config.json`.
-3. Restore `/etc/lowlands-vpn/xray.env`.
-4. Restore helper scripts under `/usr/local/sbin`.
-5. Restore sysctl overrides if present.
-6. Verify `systemctl status xray`.
-7. Verify `xray-list-clients --json`.
-8. Start Flask with the correct `.flask-env`.
+1. Подготовить Ubuntu.
+2. Установить Xray и восстановить `/usr/local/etc/xray/config.json`.
+3. Восстановить `/etc/lowlands-vpn/xray.env`.
+4. Восстановить вспомогательные скрипты в `/usr/local/sbin`.
+5. Восстановить sysctl-переопределения, если они были.
+6. Проверить `systemctl status xray`.
+7. Проверить `xray-list-clients --json`.
+8. Запустить Flask с правильным `.flask-env`.

@@ -3,17 +3,17 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage:
+Использование:
   start-postgres-tunnel.sh --host <host> --key-path <path>
                            [--user <user>] [--local-port <port>] [--remote-port <port>]
                            [--ssh-config-file <path>]
 
-Starts an SSH tunnel from localhost to the VPS-local PostgreSQL port.
+Поднимает SSH-туннель от localhost к локальному порту PostgreSQL на VPS.
 EOF
 }
 
 fail() {
-    printf 'ERROR: %s\n' "$1" >&2
+    printf 'ОШИБКА: %s\n' "$1" >&2
     exit 1
 }
 
@@ -55,14 +55,14 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            fail "Unknown argument: $1"
+            fail "Неизвестный аргумент: $1"
             ;;
     esac
 done
 
-[[ -n "$HOST" ]] || fail "--host is required"
-[[ -n "$KEY_PATH" ]] || fail "--key-path is required"
-[[ -f "$KEY_PATH" ]] || fail "SSH key not found: $KEY_PATH"
+[[ -n "$HOST" ]] || fail "Нужно указать --host"
+[[ -n "$KEY_PATH" ]] || fail "Нужно указать --key-path"
+[[ -f "$KEY_PATH" ]] || fail "SSH-ключ не найден: $KEY_PATH"
 
 ssh -F "$SSH_CONFIG_FILE" \
     -i "$KEY_PATH" \
@@ -74,4 +74,4 @@ ssh -F "$SSH_CONFIG_FILE" \
     -o ConnectTimeout=10 \
     "${USER}@${HOST}"
 
-printf 'Tunnel ready on 127.0.0.1:%s -> %s:127.0.0.1:%s\n' "$LOCAL_PORT" "$HOST" "$REMOTE_PORT"
+printf 'Туннель поднят: 127.0.0.1:%s -> %s:127.0.0.1:%s\n' "$LOCAL_PORT" "$HOST" "$REMOTE_PORT"

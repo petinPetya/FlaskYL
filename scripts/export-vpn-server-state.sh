@@ -3,23 +3,23 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage:
+Использование:
   export-vpn-server-state.sh --host <host> --user <user> --key-path <path>
                              [--port <port>] [--ssh-config-file <path>]
                              [--output-dir <dir>] [--prefix <prefix>]
 
-Exports the live VPN server state into a timestamped local directory plus a
-tar.gz archive and sha256 checksum.
+Экспортирует текущее состояние VPN-сервера в локальный каталог с отметкой
+времени, а также создаёт tar.gz-архив и sha256-сумму.
 EOF
 }
 
 fail() {
-    printf 'ERROR: %s\n' "$1" >&2
+    printf 'ОШИБКА: %s\n' "$1" >&2
     exit 1
 }
 
 require_command() {
-    command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+    command -v "$1" >/dev/null 2>&1 || fail "Не найдена обязательная команда: $1"
 }
 
 HOST=""
@@ -65,15 +65,15 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            fail "Unknown argument: $1"
+            fail "Неизвестный аргумент: $1"
             ;;
     esac
 done
 
-[[ -n "$HOST" ]] || fail "--host is required"
-[[ -n "$USER" ]] || fail "--user is required"
-[[ -n "$KEY_PATH" ]] || fail "--key-path is required"
-[[ -f "$KEY_PATH" ]] || fail "SSH key not found: $KEY_PATH"
+[[ -n "$HOST" ]] || fail "Нужно указать --host"
+[[ -n "$USER" ]] || fail "Нужно указать --user"
+[[ -n "$KEY_PATH" ]] || fail "Нужно указать --key-path"
+[[ -f "$KEY_PATH" ]] || fail "SSH-ключ не найден: $KEY_PATH"
 
 require_command ssh
 require_command scp
@@ -149,6 +149,6 @@ capture_remote_output \
 tar -C "$OUTPUT_DIR" -czf "$archive_path" "$snapshot_name"
 sha256sum "$archive_path" > "${archive_path}.sha256"
 
-printf 'Snapshot directory: %s\n' "$snapshot_dir"
-printf 'Archive: %s\n' "$archive_path"
-printf 'Checksum: %s.sha256\n' "$archive_path"
+printf 'Каталог снимка: %s\n' "$snapshot_dir"
+printf 'Архив: %s\n' "$archive_path"
+printf 'Контрольная сумма: %s.sha256\n' "$archive_path"

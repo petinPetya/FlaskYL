@@ -18,22 +18,23 @@ BUILD_LINK_SCRIPT="${BUILD_LINK_SCRIPT:-$(dirname "$0")/xray-build-vless-link}"
 
 usage() {
     cat <<'EOF'
-Usage:
+Использование:
   xray-list-clients.sh [--json]
 
-Lists VLESS clients from the configured Xray inbound and builds a share link
-for each client. If Xray API + stats are enabled, the script also returns
-traffic usage counters. The script automatically loads `XRAY_ENV_FILE`.
+Выводит VLESS-клиентов из настроенного inbound Xray и собирает ссылку
+для каждого клиента. Если в Xray включены API и stats, скрипт также
+вернёт счётчики трафика. Если существует `XRAY_ENV_FILE`, скрипт
+загрузит его автоматически.
 EOF
 }
 
 fail() {
-    printf 'ERROR: %s\n' "$1" >&2
+    printf 'ОШИБКА: %s\n' "$1" >&2
     exit 1
 }
 
 require_command() {
-    command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+    command -v "$1" >/dev/null 2>&1 || fail "Не найдена обязательная команда: $1"
 }
 
 stats_supported_in_config() {
@@ -137,14 +138,14 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            fail "Unknown argument: $1"
+            fail "Неизвестный аргумент: $1"
             ;;
     esac
 done
 
 require_command jq
-[[ -f "$XRAY_CONFIG_PATH" ]] || fail "Config not found: $XRAY_CONFIG_PATH"
-[[ -x "$BUILD_LINK_SCRIPT" ]] || fail "Build link script not found: $BUILD_LINK_SCRIPT"
+[[ -f "$XRAY_CONFIG_PATH" ]] || fail "Конфиг не найден: $XRAY_CONFIG_PATH"
+[[ -x "$BUILD_LINK_SCRIPT" ]] || fail "Скрипт сборки ссылки не найден: $BUILD_LINK_SCRIPT"
 
 CLIENTS_JSON="$(
     jq -c --arg tag "$XRAY_INBOUND_TAG" '

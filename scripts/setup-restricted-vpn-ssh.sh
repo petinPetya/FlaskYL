@@ -3,25 +3,26 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage:
+Использование:
   setup-restricted-vpn-ssh.sh --host <host> --root-key-path <path>
                               --app-public-key-path <path>
                               [--root-user <user>] [--restricted-user <user>]
                               [--port <port>] [--ssh-config-file <path>]
                               [--dispatcher-path <path>]
 
-Creates a restricted SSH user on the VPN server and installs a forced-command
-dispatcher so the Flask app no longer needs unrestricted root SSH access.
+Создаёт на VPN-сервере ограниченного SSH-пользователя и устанавливает
+forced-command dispatcher, чтобы Flask-приложению больше не был нужен
+неограниченный SSH-доступ под root.
 EOF
 }
 
 fail() {
-    printf 'ERROR: %s\n' "$1" >&2
+    printf 'ОШИБКА: %s\n' "$1" >&2
     exit 1
 }
 
 require_command() {
-    command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+    command -v "$1" >/dev/null 2>&1 || fail "Не найдена обязательная команда: $1"
 }
 
 HOST=""
@@ -72,16 +73,16 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            fail "Unknown argument: $1"
+            fail "Неизвестный аргумент: $1"
             ;;
     esac
 done
 
-[[ -n "$HOST" ]] || fail "--host is required"
-[[ -n "$ROOT_KEY_PATH" ]] || fail "--root-key-path is required"
-[[ -n "$APP_PUBLIC_KEY_PATH" ]] || fail "--app-public-key-path is required"
-[[ -f "$ROOT_KEY_PATH" ]] || fail "SSH key not found: $ROOT_KEY_PATH"
-[[ -f "$APP_PUBLIC_KEY_PATH" ]] || fail "Public key not found: $APP_PUBLIC_KEY_PATH"
+[[ -n "$HOST" ]] || fail "Нужно указать --host"
+[[ -n "$ROOT_KEY_PATH" ]] || fail "Нужно указать --root-key-path"
+[[ -n "$APP_PUBLIC_KEY_PATH" ]] || fail "Нужно указать --app-public-key-path"
+[[ -f "$ROOT_KEY_PATH" ]] || fail "SSH-ключ не найден: $ROOT_KEY_PATH"
+[[ -f "$APP_PUBLIC_KEY_PATH" ]] || fail "Публичный ключ не найден: $APP_PUBLIC_KEY_PATH"
 
 require_command ssh
 require_command scp
@@ -89,7 +90,7 @@ require_command base64
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 dispatcher_source="${script_dir}/xray-ssh-dispatch.py"
-[[ -f "$dispatcher_source" ]] || fail "Dispatcher not found: $dispatcher_source"
+[[ -f "$dispatcher_source" ]] || fail "Dispatcher не найден: $dispatcher_source"
 
 ssh_base=(
     ssh
@@ -150,8 +151,8 @@ EOF_SUDOERS
 chmod 440 "/etc/sudoers.d/${RESTRICTED_USER}-xray"
 visudo -cf "/etc/sudoers.d/${RESTRICTED_USER}-xray" >/dev/null
 
-echo "$RESTRICTED_USER ready"
+echo "$RESTRICTED_USER готов"
 EOF
 
-printf 'Restricted user installed: %s@%s\n' "$RESTRICTED_USER" "$HOST"
-printf 'Suggested Flask env change: export VPN_SSH_USER=%q\n' "$RESTRICTED_USER"
+printf 'Ограниченный пользователь установлен: %s@%s\n' "$RESTRICTED_USER" "$HOST"
+printf 'Рекомендуемое изменение в Flask env: export VPN_SSH_USER=%q\n' "$RESTRICTED_USER"
