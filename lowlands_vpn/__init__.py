@@ -1,6 +1,7 @@
 import logging
+import uuid
 
-from flask import Flask, render_template
+from flask import Flask, g, jsonify, render_template, request
 from flask_wtf.csrf import CSRFError
 import click
 
@@ -24,11 +25,11 @@ def create_app(test_config: dict | None = None) -> Flask:
     csrf.init_app(app)
     login_manager.init_app(app)
     configure_logging(app)
+    register_request_hooks(app)
 
     from lowlands_vpn.api import api_bp
     from lowlands_vpn.routes import main_bp
 
-    csrf.exempt(api_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(main_bp)
     register_cli_commands(app)
@@ -80,6 +81,18 @@ def configure_logging(app: Flask) -> None:
 def register_error_handlers(app: Flask) -> None:
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
+        if request.path.startswith("/api/"):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Недействительный CSRF-токен.",
+                        "details": error.description
+                        or "CSRF token is missing or invalid.",
+                    }
+                ),
+                400,
+            )
         return (
             render_template(
                 "csrf_error.html",
@@ -87,3 +100,18 @@ def register_error_handlers(app: Flask) -> None:
             ),
             400,
         )
+
+
+def register_request_hooks(app: Flask) -> None:
+    @app.before_request
+    def assign_request_id():
+        incoming_request_id = (request.headers.get("X-Request-ID") or "").strip()
+        request_id = incoming_request_id[:128] if incoming_request_id else uuid.uuid4().hex
+        g.request_id = request_id
+
+    @app.after_request
+    def add_request_id_header(response):
+        request_id = getattr(g, "request_id", None)
+        if request_id:
+            response.headers["X-Request-ID"] = request_id
+        return response

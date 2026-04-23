@@ -6,6 +6,7 @@
 - `SESSION_COOKIE_SECURE`
 - `REMEMBER_COOKIE_SECURE`
 - `PREFERRED_URL_SCHEME`
+- `BOOTSTRAP_SCHEMA_ON_STARTUP`
 
 Если `DATABASE_URL` не задан, приложение использует локальную SQLite-базу в `instance/site.db`.
 
@@ -33,11 +34,15 @@ alembic upgrade head
 - `VPN_SSH_KEY_PATH`
 - `VPN_SSH_CONFIG_FILE`
 - `VPN_SSH_CONNECT_TIMEOUT`
+- `VPN_SSH_COMMAND_TIMEOUT`
+- `VPN_SSH_COMMAND_RETRIES`
+- `VPN_SSH_RETRY_BACKOFF_SECONDS`
 - `VPN_SSH_STRICT_HOST_KEY_CHECKING`
 - `VPN_REMOTE_ADD_SCRIPT`
 - `VPN_REMOTE_REMOVE_SCRIPT`
 - `VPN_REMOTE_BUILD_LINK_SCRIPT`
 - `VPN_REMOTE_LIST_SCRIPT`
+- `VPN_REMOTE_UPDATE_EMAIL_SCRIPT`
 
 Если настроен `VPN_REMOTE_BUILD_LINK_SCRIPT`, Flask по умолчанию строит `vless://` ссылку
 через удаленный скрипт на VPN-сервере. Это безопаснее, потому что `sid` и `sni` берутся
@@ -45,9 +50,49 @@ alembic upgrade head
 Локальная сборка ссылки используется только как fallback, если удаленный builder не настроен.
 По умолчанию `VPN_SSH_CONFIG_FILE=/dev/null`, чтобы не зависеть от системных SSH include-файлов.
 
+### Переменные для email verification
+
+- `EMAIL_VERIFICATION_ENABLED`
+- `EMAIL_VERIFICATION_REQUIRED`
+- `EMAIL_VERIFICATION_TOKEN_TTL_SECONDS`
+- `EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`
+- `EMAIL_VERIFICATION_SALT`
+- `PUBLIC_APP_URL`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM`
+- `SMTP_USE_TLS`
+- `SMTP_USE_SSL`
+
+Если `SMTP_HOST` не задан, письмо не отправляется в сеть: ссылка подтверждения
+пишется в лог приложения.
+При миграции существующие пользователи автоматически помечаются как уже подтвержденные.
+
+### API + CSRF для session-auth
+
+API работает через cookie-сессию и теперь требует CSRF-токен для всех mutating запросов (`POST`).
+
+Получить токен:
+
+```bash
+curl -s http://127.0.0.1:5000/api/auth/csrf
+```
+
+Далее передавать его в заголовке `X-CSRFToken` для `/api/auth/login`, `/api/auth/logout`,
+`/api/auth/resend-verification`, `/api/subscriptions/request`, `/api/devices`,
+`/api/devices/<id>/revoke` и прочих `POST` endpoint'ов.
+
+Health endpoints для мониторинга и smoke-проверок:
+
+- `GET /health/live`
+- `GET /health/ready`
+
 ## Тесты
 
 ```bash
+.venv/bin/pip install -r requirements-dev.txt
 .venv/bin/pytest -q
 ```
 
@@ -87,6 +132,70 @@ alembic revision --autogenerate -m "your message"
 
 - `docs/operations.md`
 
+### Переезд сайта на новый Ubuntu сервер
+
+Для быстрого "lift-and-shift" используй:
+
+```bash
+./scripts/migrate-web-server-ubuntu.sh \
+  --host <NEW_SERVER_IP> \
+  --root-key-path /path/to/root_key \
+  --domain example.com \
+  --vpn-key-path-local /home/senamorsin/.ssh/lowlands_vpn_xray \
+  --old-host 194.87.130.123 \
+  --old-key-path /home/senamorsin/.ssh/lowlands_vpn_xray \
+  --old-db-name lowlands_vpn
+```
+
+Скрипт:
+
+- устанавливает `nginx + postgresql + python` на новом сервере;
+- копирует текущий проект;
+- настраивает `systemd` сервис `lowlands-web`;
+- создаёт `/etc/lowlands-web/flask.env`;
+- прогоняет `alembic upgrade head`;
+- перед деплоем создаёт rollback-бэкап в `/var/backups/lowlands-web` (можно переопределить `--backup-root`);
+- (опционально) переносит данные из старой PostgreSQL через `pg_dump/pg_restore`.
+
+### Обновление уже развернутого сервера
+
+Для обычного релиза (без полного переезда) используй:
+
+```bash
+./scripts/update-web-server-ubuntu.sh \
+  --host 194.87.130.123 \
+  --root-key-path /home/senamorsin/.ssh/lowlands_vpn_xray \
+  --domain localhost
+```
+
+Скрипт:
+
+- загружает архив текущего проекта;
+- делает pre-update backup в `/var/backups/lowlands-web`;
+- обновляет код в `/srv/lowlands-web/app` (сохраняет `.venv` и `instance`);
+- устанавливает зависимости;
+- запускает `alembic upgrade head`;
+- перезапускает `lowlands-web`;
+- выполняет smoke-проверку.
+
+После деплоя можно проверить сервер:
+
+```bash
+./scripts/smoke-test-web-server.sh \
+  --host <NEW_SERVER_IP> \
+  --root-key-path /path/to/root_key \
+  --domain example.com
+```
+
+Если нужен откат:
+
+```bash
+./scripts/rollback-web-server-ubuntu.sh \
+  --host <NEW_SERVER_IP> \
+  --root-key-path /path/to/root_key \
+  --backup-dir /var/backups/lowlands-web/<TIMESTAMP>
+```
+
 Быстрые команды:
 
 ```bash
@@ -103,6 +212,13 @@ alembic revision --autogenerate -m "your message"
   --app-public-key-path /home/senamorsin/.ssh/lowlands_vpn_xray.pub
 ```
 
+```bash
+./scripts/backup-postgres-ubuntu.sh \
+  --host 194.87.130.123 \
+  --root-key-path /home/senamorsin/.ssh/lowlands_vpn_xray \
+  --db-name lowlands_vpn
+```
+
 ## VPN helper scripts
 
 В репозитории есть серверные скрипты для Xray:
@@ -111,9 +227,10 @@ alembic revision --autogenerate -m "your message"
 - `scripts/xray-remove-client.sh`
 - `scripts/xray-build-vless-link.sh`
 - `scripts/xray-list-clients.sh`
+- `scripts/xray-update-client-email.sh`
 
 Они рассчитаны на запуск на VPN-сервере с Ubuntu и Xray под `systemd`.
-Все три скрипта автоматически загружают `/etc/lowlands-vpn/xray.env`, если файл существует.
+Все скрипты автоматически загружают `/etc/lowlands-vpn/xray.env`, если файл существует.
 
 ### Что нужно на сервере
 
@@ -155,8 +272,9 @@ sudo cp scripts/xray-add-client.sh /usr/local/sbin/xray-add-client
 sudo cp scripts/xray-remove-client.sh /usr/local/sbin/xray-remove-client
 sudo cp scripts/xray-build-vless-link.sh /usr/local/sbin/xray-build-vless-link
 sudo cp scripts/xray-list-clients.sh /usr/local/sbin/xray-list-clients
-sudo chown root:root /usr/local/sbin/xray-add-client /usr/local/sbin/xray-remove-client /usr/local/sbin/xray-build-vless-link /usr/local/sbin/xray-list-clients
-sudo chmod 750 /usr/local/sbin/xray-add-client /usr/local/sbin/xray-remove-client /usr/local/sbin/xray-build-vless-link /usr/local/sbin/xray-list-clients
+sudo cp scripts/xray-update-client-email.sh /usr/local/sbin/xray-update-client-email
+sudo chown root:root /usr/local/sbin/xray-add-client /usr/local/sbin/xray-remove-client /usr/local/sbin/xray-build-vless-link /usr/local/sbin/xray-list-clients /usr/local/sbin/xray-update-client-email
+sudo chmod 750 /usr/local/sbin/xray-add-client /usr/local/sbin/xray-remove-client /usr/local/sbin/xray-build-vless-link /usr/local/sbin/xray-list-clients /usr/local/sbin/xray-update-client-email
 ```
 
 После копирования поправьте значения в `/etc/lowlands-vpn/xray.env`.
@@ -204,6 +322,15 @@ export VLESS_SNI='www.yandex.ru'
 
 ```bash
 sudo ./scripts/xray-list-clients.sh --json
+```
+
+Переименовать Xray email (label) без изменения UUID:
+
+```bash
+sudo ./scripts/xray-update-client-email.sh \
+  --uuid 1430dff8-73ef-44bf-a9ce-09c3ef9b638b \
+  --email user1@xray \
+  --json
 ```
 
 Если в Xray позже будут включены `api` и `stats`, этот же helper начнет отдавать

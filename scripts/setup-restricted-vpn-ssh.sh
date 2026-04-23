@@ -146,7 +146,7 @@ chown "$RESTRICTED_USER:$RESTRICTED_USER" "$authorized_keys"
 chmod 600 "$authorized_keys"
 
 cat > "/etc/sudoers.d/${RESTRICTED_USER}-xray" <<EOF_SUDOERS
-${RESTRICTED_USER} ALL=(root) NOPASSWD: /usr/local/sbin/xray-add-client, /usr/local/sbin/xray-remove-client, /usr/local/sbin/xray-build-vless-link, /usr/local/sbin/xray-list-clients
+${RESTRICTED_USER} ALL=(root) NOPASSWD: /usr/local/sbin/xray-add-client, /usr/local/sbin/xray-remove-client, /usr/local/sbin/xray-build-vless-link, /usr/local/sbin/xray-list-clients, /usr/local/sbin/xray-update-client-email
 EOF_SUDOERS
 chmod 440 "/etc/sudoers.d/${RESTRICTED_USER}-xray"
 visudo -cf "/etc/sudoers.d/${RESTRICTED_USER}-xray" >/dev/null

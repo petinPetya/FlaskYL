@@ -98,8 +98,30 @@ class LogoutForm(FlaskForm):
     submit = SubmitField("Выйти")
 
 
+class EmailVerificationResendForm(FlaskForm):
+    submit = SubmitField("Отправить ссылку ещё раз")
+
+
 class AdminActionForm(FlaskForm):
     submit = SubmitField("Подтвердить")
+
+
+class AdminDeviceVpnEmailForm(FlaskForm):
+    vpn_email = StringField(
+        "Xray email",
+        validators=[
+            DataRequired(message="Укажите email в формате label@xray."),
+            Length(max=255),
+        ],
+    )
+    submit = SubmitField("Обновить email")
+
+    def validate_vpn_email(self, field: StringField) -> None:
+        email = (field.data or "").strip()
+        if not email:
+            raise ValidationError("Укажите email в формате label@xray.")
+        if " " in email:
+            raise ValidationError("Email не должен содержать пробелы.")
 
 
 class BalanceAdjustmentForm(FlaskForm):

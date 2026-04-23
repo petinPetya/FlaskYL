@@ -21,6 +21,8 @@ class User(UserMixin, db.Model):
     balance = db.Column(db.Integer, default=0, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    email_verified_at = db.Column(db.DateTime, nullable=True)
+    email_verification_sent_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
     last_login_at = db.Column(db.DateTime, nullable=True)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
@@ -56,6 +58,14 @@ class User(UserMixin, db.Model):
 
     def deposit(self, amount_cents):
         self.balance += amount_cents
+
+    @property
+    def is_email_verified(self) -> bool:
+        return self.email_verified_at is not None
+
+    def mark_email_verified(self) -> None:
+        if not self.is_email_verified:
+            self.email_verified_at = utc_now()
 
     def __repr__(self):
         return f"User {self.email}"
@@ -263,11 +273,52 @@ class Invoice(db.Model):
     def get_requested_tariff_id(self):
         return self.get_metadata().get("tariff_id")
 
+    @property
+    def payment_system(self):
+        return self.review_channel
+
+    @payment_system.setter
+    def payment_system(self, value):
+        self.review_channel = value
+
+    @property
+    def payment_system_id(self):
+        return self.review_reference
+
+    @payment_system_id.setter
+    def payment_system_id(self, value):
+        self.review_reference = value
+
+    @property
+    def payment_url(self):
+        return self.external_url
+
+    @payment_url.setter
+    def payment_url(self, value):
+        self.external_url = value
+
+    @property
+    def paid_at(self):
+        return self.processed_at
+
+    @paid_at.setter
+    def paid_at(self, value):
+        self.processed_at = value
+
     def mark_as_approved(self, reference_id=None):
         self.status = "approved"
         self.processed_at = utc_now()
         if reference_id:
             self.review_reference = reference_id
+
+    def mark_as_paid(self, payment_system_id=None):
+        self.status = "paid"
+        self.paid_at = utc_now()
+        if payment_system_id:
+            self.payment_system_id = payment_system_id
+
+    def is_processed_successfully(self):
+        return self.status in {"approved", "paid"}
 
     def mark_as_failed(self, reason=None):
         self.status = "failed"

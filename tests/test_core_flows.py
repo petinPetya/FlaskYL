@@ -1,6 +1,7 @@
 import json
 from datetime import timedelta
 
+from lowlands_vpn.email_verification import generate_email_verification_token
 from lowlands_vpn.extensions import db
 from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
 
@@ -30,6 +31,16 @@ def api_login(client, email: str, password: str = "strong-pass-123"):
         "/api/auth/login",
         json={"email": email, "password": password},
     )
+
+
+def api_csrf(client) -> str:
+    response = client.get("/api/auth/csrf")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    token = payload["data"]["csrf_token"]
+    assert token
+    return token
 
 
 def logout_user(client):
@@ -65,6 +76,7 @@ def enable_vpn_ssh_config(app):
             "VPN_REMOTE_REMOVE_SCRIPT": "/usr/local/sbin/xray-remove-client",
             "VPN_REMOTE_BUILD_LINK_SCRIPT": "/usr/local/sbin/xray-build-vless-link",
             "VPN_REMOTE_LIST_SCRIPT": "/usr/local/sbin/xray-list-clients",
+            "VPN_REMOTE_UPDATE_EMAIL_SCRIPT": "/usr/local/sbin/xray-update-client-email",
             "VLESS_HOST": "",
             "VLESS_PBK": "",
             "VLESS_SNI": "",
@@ -112,6 +124,32 @@ def test_public_pages_and_auth_flow_work(app, client):
     assert "успешно вошли" in success_login.get_data(as_text=True)
 
 
+def test_health_endpoints_report_liveness_and_readiness(app, client):
+    live_response = client.get("/health/live")
+    ready_response = client.get("/health/ready")
+
+    assert live_response.status_code == 200
+    live_payload = live_response.get_json()
+    assert live_payload["ok"] is True
+    assert live_payload["status"] == "alive"
+
+    assert ready_response.status_code == 200
+    ready_payload = ready_response.get_json()
+    assert ready_payload["ok"] is True
+    assert ready_payload["status"] == "ready"
+    assert ready_payload["checks"]["database"]["ok"] is True
+
+
+def test_request_id_header_is_echoed_for_traceability(app, client):
+    response_with_id = client.get("/", headers={"X-Request-ID": "trace-12345"})
+    response_without_id = client.get("/")
+
+    assert response_with_id.status_code == 200
+    assert response_with_id.headers["X-Request-ID"] == "trace-12345"
+    assert response_without_id.status_code == 200
+    assert response_without_id.headers["X-Request-ID"]
+
+
 def test_user_can_create_pending_subscription_request(app, client):
     register_user(client, "client@example.com")
     starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
@@ -131,6 +169,76 @@ def test_user_can_create_pending_subscription_request(app, client):
     assert invoice.type == "subscription_request"
     assert invoice.get_requested_tariff_id() == starter.id
     assert Subscription.query.count() == 0
+
+
+def test_user_can_verify_email_via_token_link(app, client):
+    register_user(client, "verify@example.com")
+    user = db.session.scalar(db.select(User).where(User.email == "verify@example.com"))
+    assert user is not None
+    assert user.is_email_verified is False
+
+    token = generate_email_verification_token(user)
+    response = client.get(f"/verify-email/{token}", follow_redirects=True)
+
+    db.session.refresh(user)
+    assert response.status_code == 200
+    assert "Email подтвержден." in response.get_data(as_text=True)
+    assert user.is_email_verified is True
+
+
+def test_email_verification_can_be_required_for_subscription_actions(app, client):
+    app.config["EMAIL_VERIFICATION_REQUIRED"] = True
+    register_user(client, "verify-guard@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+
+    blocked_response = client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    assert blocked_response.status_code == 200
+    assert "Подтвердите email" in blocked_response.get_data(as_text=True)
+    assert Invoice.query.count() == 0
+
+    user = db.session.scalar(
+        db.select(User).where(User.email == "verify-guard@example.com")
+    )
+    assert user is not None
+    user.mark_email_verified()
+    db.session.commit()
+
+    allowed_response = client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    assert allowed_response.status_code == 200
+    assert "Запрос на тариф создан" in allowed_response.get_data(as_text=True)
+    assert Invoice.query.count() == 1
+
+
+def test_user_can_resend_email_verification_link(app, client):
+    app.config["EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS"] = 0
+    register_user(client, "resend@example.com")
+    user = db.session.scalar(db.select(User).where(User.email == "resend@example.com"))
+    assert user is not None
+    first_sent_at = user.email_verification_sent_at
+    assert first_sent_at is not None
+
+    response = client.post(
+        "/email-verification/resend",
+        data={},
+        follow_redirects=True,
+    )
+
+    db.session.refresh(user)
+    assert response.status_code == 200
+    assert (
+        "Письмо подтверждения отправлено повторно." in response.get_data(as_text=True)
+        or "SMTP не настроен" in response.get_data(as_text=True)
+    )
+    assert user.email_verification_sent_at is not None
+    assert user.email_verification_sent_at >= first_sent_at
 
 
 def test_admin_can_approve_subscription_request(app, client):
@@ -241,6 +349,110 @@ def test_admin_can_toggle_user_role_active_and_balance(app, client):
     assert updated_user.is_admin is True
     assert updated_user.is_active is False
     assert updated_user.balance == 37500
+
+
+def test_admin_can_delete_user_account_completely(app, client):
+    register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
+    logout_user(client)
+    register_user(client, "remove-me@example.com")
+    user = db.session.scalar(db.select(User).where(User.email == "remove-me@example.com"))
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    assert user is not None
+    subscription = Subscription(
+        user_id=user.id,
+        tariff_id=starter.id,
+        starts_at=utc_now(),
+        expires_at=utc_now() + timedelta(days=starter.days_valid),
+        traffic_limit_bytes=starter.traffic_limit_bytes,
+        status="active",
+    )
+    db.session.add(subscription)
+    db.session.flush()
+    db.session.add(
+        Device(
+            subscription_id=subscription.id,
+            name="To Be Deleted",
+            platform="windows",
+            status="active",
+            provisioning_state="ready",
+            vpn_uuid="delete-uuid-1",
+            vpn_email="delete-user@xray",
+        )
+    )
+    db.session.add(
+        Invoice(
+            user_id=user.id,
+            subscription_id=subscription.id,
+            amount_cents=starter.price_cents,
+            status="pending",
+            type="subscription_request",
+        )
+    )
+    db.session.commit()
+    logout_user(client)
+
+    login_user(client, "admin@example.com")
+    response = client.post(
+        f"/admin/users/{user.id}/delete",
+        data={},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Пользователь удален безвозвратно." in response.get_data(as_text=True)
+    assert db.session.get(User, user.id) is None
+    assert Subscription.query.filter_by(user_id=user.id).count() == 0
+    assert Invoice.query.filter_by(user_id=user.id).count() == 0
+    remaining_devices = (
+        Device.query.join(Subscription).filter(Subscription.user_id == user.id).count()
+    )
+    assert remaining_devices == 0
+
+
+def test_admin_can_verify_user_email_manually(app, client):
+    register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
+    logout_user(client)
+    register_user(client, "user-to-verify@example.com")
+    user = db.session.scalar(
+        db.select(User).where(User.email == "user-to-verify@example.com")
+    )
+    assert user is not None
+    assert user.is_email_verified is False
+    logout_user(client)
+
+    login_user(client, "admin@example.com")
+    response = client.post(
+        f"/admin/users/{user.id}/verify-email",
+        data={},
+        follow_redirects=True,
+    )
+
+    updated_user = db.session.get(User, user.id)
+    assert response.status_code == 200
+    assert "Email пользователя подтвержден вручную." in response.get_data(as_text=True)
+    assert updated_user is not None
+    assert updated_user.is_email_verified is True
+
+
+def test_admin_cannot_delete_own_account(app, client):
+    register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
+    admin_user = db.session.scalar(db.select(User).where(User.email == "admin@example.com"))
+    assert admin_user is not None
+
+    response = client.post(
+        f"/admin/users/{admin_user.id}/delete",
+        data={},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Нельзя удалить собственный аккаунт администратора." in response.get_data(
+        as_text=True
+    )
+    assert db.session.get(User, admin_user.id) is not None
 
 
 def test_admin_subscription_is_lifetime_by_default(app, client):
@@ -613,6 +825,138 @@ def test_admin_can_update_device_provisioning_state(app, client):
     assert updated_device.assigned_ip == "10.0.0.2"
 
 
+def test_admin_can_update_device_xray_email_without_replacing_link(
+    app, client, monkeypatch
+):
+    enable_vpn_ssh_config(app)
+    recorded_commands = []
+
+    register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    admin_user = db.session.scalar(
+        db.select(User).where(User.email == "admin@example.com")
+    )
+    subscription = db.session.scalar(
+        db.select(Subscription).where(Subscription.user_id == admin_user.id)
+    )
+    device = Device(
+        subscription_id=subscription.id,
+        name="Managed Laptop",
+        platform="windows",
+        status="active",
+        provisioning_state="ready",
+        vpn_uuid="managed-uuid-1",
+        vpn_email="old-mail@xray",
+        vpn_link="vless://managed-uuid-1@test:443",
+    )
+    db.session.add(device)
+    db.session.commit()
+
+    def fake_run(command, capture_output, check, text):
+        remote_command = command[-1]
+        recorded_commands.append(remote_command)
+        if "xray-update-client-email" in remote_command:
+            return FakeCompletedProcess(
+                stdout=json.dumps(
+                    {
+                        "status": "ok",
+                        "uuid": "managed-uuid-1",
+                        "email": "new-mail@xray",
+                        "link": "vless://managed-uuid-1@test:443",
+                    }
+                )
+            )
+        raise AssertionError(f"Unexpected command: {remote_command}")
+
+    monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
+
+    response = client.post(
+        f"/admin/devices/{device.id}/vpn-email",
+        data={f"vpn-email-{device.id}-vpn_email": "new-mail@xray"},
+        follow_redirects=True,
+    )
+
+    updated_device = db.session.get(Device, device.id)
+    assert response.status_code == 200
+    assert "Xray email обновлён без замены UUID и ссылки." in response.get_data(
+        as_text=True
+    )
+    assert updated_device.vpn_email == "new-mail@xray"
+    assert updated_device.vpn_uuid == "managed-uuid-1"
+    assert updated_device.vpn_link == "vless://managed-uuid-1@test:443"
+    assert any("xray-update-client-email" in command for command in recorded_commands)
+
+
+def test_admin_device_xray_email_update_shows_remote_error(app, client, monkeypatch):
+    enable_vpn_ssh_config(app)
+
+    register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+
+    admin_user = db.session.scalar(
+        db.select(User).where(User.email == "admin@example.com")
+    )
+    subscription = db.session.scalar(
+        db.select(Subscription).where(Subscription.user_id == admin_user.id)
+    )
+    device = Device(
+        subscription_id=subscription.id,
+        name="Conflict Laptop",
+        platform="windows",
+        status="active",
+        provisioning_state="ready",
+        vpn_uuid="managed-uuid-2",
+        vpn_email="conflict-old@xray",
+        vpn_link="vless://managed-uuid-2@test:443",
+    )
+    db.session.add(device)
+    db.session.commit()
+
+    def fake_run(command, capture_output, check, text):
+        remote_command = command[-1]
+        if "xray-update-client-email" in remote_command:
+            return FakeCompletedProcess(returncode=1, stderr="Email уже существует")
+        raise AssertionError(f"Unexpected command: {remote_command}")
+
+    monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
+
+    response = client.post(
+        f"/admin/devices/{device.id}/vpn-email",
+        data={f"vpn-email-{device.id}-vpn_email": "duplicate@xray"},
+        follow_redirects=True,
+    )
+
+    unchanged_device = db.session.get(Device, device.id)
+    assert response.status_code == 200
+    assert "Не удалось обновить Xray email" in response.get_data(as_text=True)
+    assert unchanged_device.vpn_email == "conflict-old@xray"
+
+
 def test_admin_dashboard_shows_server_vless_clients(app, client, monkeypatch):
     enable_vpn_ssh_config(app)
 
@@ -910,6 +1254,63 @@ def test_device_provision_failure_is_saved_on_device(app, client, monkeypatch):
     assert device.status == "pending"
     assert device.provisioning_state == "failed"
     assert "ssh timeout" in device.last_error
+
+
+def test_device_provision_retries_transient_ssh_error_once(app, client, monkeypatch):
+    enable_vpn_ssh_config(app)
+    app.config.update(
+        {
+            "VPN_SSH_COMMAND_RETRIES": 1,
+            "VPN_SSH_RETRY_BACKOFF_SECONDS": 0,
+        }
+    )
+    add_attempts = {"count": 0}
+
+    def fake_run(command, capture_output, check, text, timeout=None):
+        remote_command = command[-1]
+        if "xray-add-client" in remote_command:
+            add_attempts["count"] += 1
+            if add_attempts["count"] == 1:
+                return FakeCompletedProcess(returncode=255, stderr="Connection timed out")
+            return FakeCompletedProcess(
+                stdout=json.dumps({"status": "ok", "link": "vless://retry-success"})
+            )
+        raise AssertionError(f"Unexpected command: {remote_command}")
+
+    monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
+
+    register_user(client, "admin@example.com")
+    grant_admin("admin@example.com")
+    logout_user(client)
+
+    register_user(client, "user@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    client.post(
+        "/subscriptions/request",
+        data={"tariff_id": starter.id},
+        follow_redirects=True,
+    )
+    invoice = db.session.scalar(db.select(Invoice))
+    logout_user(client)
+
+    login_user(client, "admin@example.com")
+    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    logout_user(client)
+
+    login_user(client, "user@example.com")
+    response = client.post(
+        "/devices",
+        data={"name": "Retry Laptop", "platform": "windows"},
+        follow_redirects=True,
+    )
+
+    device = db.session.scalar(db.select(Device).where(Device.name == "Retry Laptop"))
+    assert response.status_code == 200
+    assert "VPN-ссылка готова" in response.get_data(as_text=True)
+    assert add_attempts["count"] == 2
+    assert device is not None
+    assert device.provisioning_state == "ready"
+    assert device.vpn_link == "vless://retry-success"
 
 
 def test_user_revoke_calls_vpn_remove_script(app, client, monkeypatch):
@@ -1383,6 +1784,43 @@ def test_api_requires_auth_without_redirects(app, client):
     assert payload == {"ok": False, "error": "Требуется авторизация."}
 
 
+def test_api_mutations_require_csrf_when_enabled(app, client):
+    register_user(client, "api-csrf@example.com")
+    logout_user(client)
+    app.config["WTF_CSRF_ENABLED"] = True
+
+    no_csrf_login = client.post(
+        "/api/auth/login",
+        json={"email": "api-csrf@example.com", "password": "strong-pass-123"},
+    )
+
+    assert no_csrf_login.status_code == 400
+    no_csrf_payload = no_csrf_login.get_json()
+    assert no_csrf_payload["ok"] is False
+    assert no_csrf_payload["error"] == "Недействительный CSRF-токен."
+
+    csrf_token = api_csrf(client)
+    login_response = client.post(
+        "/api/auth/login",
+        json={"email": "api-csrf@example.com", "password": "strong-pass-123"},
+        headers={"X-CSRFToken": csrf_token},
+    )
+
+    assert login_response.status_code == 200
+    assert login_response.get_json()["ok"] is True
+
+    no_csrf_logout = client.post("/api/auth/logout")
+    assert no_csrf_logout.status_code == 400
+
+    logout_token = api_csrf(client)
+    logout_response = client.post(
+        "/api/auth/logout",
+        headers={"X-CSRFToken": logout_token},
+    )
+    assert logout_response.status_code == 200
+    assert logout_response.get_json()["ok"] is True
+
+
 def test_api_login_me_and_logout_flow(app, client):
     register_user(client, "api-auth@example.com")
     logout_user(client)
@@ -1399,6 +1837,31 @@ def test_api_login_me_and_logout_flow(app, client):
     assert logout_response.status_code == 200
     assert logout_response.get_json()["message"] == "Сессия завершена."
     assert unauthorized_after_logout.status_code == 401
+
+
+def test_api_requires_verified_email_for_mutations_when_enabled(app, client):
+    app.config["EMAIL_VERIFICATION_REQUIRED"] = True
+    register_user(client, "api-verify@example.com")
+    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+
+    blocked_response = client.post(
+        "/api/subscriptions/request",
+        json={"tariff_id": starter.id},
+    )
+    assert blocked_response.status_code == 403
+    assert "Подтвердите email" in blocked_response.get_json()["error"]
+
+    user = db.session.scalar(db.select(User).where(User.email == "api-verify@example.com"))
+    assert user is not None
+    user.mark_email_verified()
+    db.session.commit()
+
+    allowed_response = client.post(
+        "/api/subscriptions/request",
+        json={"tariff_id": starter.id},
+    )
+    assert allowed_response.status_code == 201
+    assert allowed_response.get_json()["ok"] is True
 
 
 def test_api_can_create_subscription_request_and_list_invoices(app, client):
@@ -1482,3 +1945,46 @@ def test_admin_api_overview_and_users_endpoints(app, client):
         "api-admin@example.com",
         "api-user@example.com",
     }
+
+
+def test_admin_api_can_delete_user(app, client):
+    register_user(client, "api-admin@example.com")
+    grant_admin("api-admin@example.com")
+    logout_user(client)
+    register_user(client, "api-delete@example.com")
+    user = db.session.scalar(db.select(User).where(User.email == "api-delete@example.com"))
+    assert user is not None
+    logout_user(client)
+    api_login(client, "api-admin@example.com")
+
+    response = client.post(f"/api/admin/users/{user.id}/delete")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["message"] == "Пользователь удален безвозвратно."
+    assert db.session.get(User, user.id) is None
+
+
+def test_admin_api_can_verify_user_email_manually(app, client):
+    register_user(client, "api-admin@example.com")
+    grant_admin("api-admin@example.com")
+    logout_user(client)
+    register_user(client, "api-verify-user@example.com")
+    user = db.session.scalar(
+        db.select(User).where(User.email == "api-verify-user@example.com")
+    )
+    assert user is not None
+    assert user.is_email_verified is False
+    logout_user(client)
+    api_login(client, "api-admin@example.com")
+
+    response = client.post(f"/api/admin/users/{user.id}/verify-email")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["message"] == "Email пользователя подтвержден вручную."
+    updated_user = db.session.get(User, user.id)
+    assert updated_user is not None
+    assert updated_user.is_email_verified is True

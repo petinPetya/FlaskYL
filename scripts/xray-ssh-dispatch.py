@@ -31,6 +31,14 @@ ALLOWED_COMMANDS = {
             "--json": False,
         }
     },
+    "/usr/local/sbin/xray-update-client-email": {
+        "flags": {
+            "--uuid": True,
+            "--email": True,
+            "--name": True,
+            "--json": False,
+        }
+    },
 }
 
 ALIASES = {

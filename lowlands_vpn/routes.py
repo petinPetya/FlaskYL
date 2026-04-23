@@ -1,28 +1,47 @@
 from functools import wraps
 from urllib.parse import urlsplit
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import current_user, login_required, login_user, logout_user
+from sqlalchemy import text
 
 from lowlands_vpn.data import PLANS
 from lowlands_vpn.extensions import db
 from lowlands_vpn.forms import (
     AdminActionForm,
     AdminDeviceManagementForm,
+    AdminDeviceVpnEmailForm,
     AdminSubscriptionExpiryForm,
     BalanceAdjustmentForm,
     DeviceActionForm,
     DeviceCreateForm,
+    EmailVerificationResendForm,
     LoginForm,
     LogoutForm,
     RegisterForm,
     SubscriptionRequestForm,
+)
+from lowlands_vpn.email_verification import (
+    EmailVerificationError,
+    is_email_verification_enabled,
+    is_email_verification_required,
+    send_email_verification_message,
+    verify_email_token,
 )
 from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
 from lowlands_vpn.services import (
     SUBSCRIPTION_REQUEST_TYPE,
     approve_subscription_request,
     create_subscription_request,
+    delete_user_account,
     get_current_subscription,
     get_pending_subscription_request,
     sync_user_subscriptions,
@@ -34,6 +53,7 @@ from lowlands_vpn.vpn import (
     provision_device,
     remove_server_vless_client_by_uuid,
     revoke_device_on_server,
+    update_server_vless_client_email,
 )
 main_bp = Blueprint("main", __name__)
 
@@ -61,6 +81,27 @@ def admin_required(view_func):
         return view_func(*args, **kwargs)
 
     return wrapped_view
+
+
+def user_email_is_verified(user: User) -> bool:
+    return bool(user.email_verified_at)
+
+
+def should_enforce_email_verification() -> bool:
+    return is_email_verification_required()
+
+
+def enforce_verified_email_or_redirect() -> bool:
+    if user_email_is_verified(current_user):
+        return True
+    if not should_enforce_email_verification():
+        return True
+
+    flash(
+        "Подтвердите email, чтобы выполнять это действие.",
+        "warning",
+    )
+    return False
 
 
 def build_plan_cards(tariffs: list[Tariff]) -> list[dict]:
@@ -97,7 +138,10 @@ def get_invoice_tariff(invoice: Invoice) -> Tariff | None:
 
 
 def is_invoice_removable(invoice: Invoice) -> bool:
-    return invoice.type == SUBSCRIPTION_REQUEST_TYPE and invoice.status == "approved"
+    return (
+        invoice.type == SUBSCRIPTION_REQUEST_TYPE
+        and invoice.status in {"approved", "paid"}
+    )
 
 
 def is_subscription_removable(subscription: Subscription) -> bool:
@@ -263,6 +307,39 @@ def get_dashboard_expiration_note(subscription: Subscription | None) -> str:
     return f"Осталось примерно {remaining_days} дн."
 
 
+def check_database_readiness() -> tuple[bool, str | None]:
+    try:
+        db.session.execute(text("SELECT 1"))
+    except Exception as error:  # pragma: no cover - defensive runtime check
+        return False, str(error)
+    return True, None
+
+
+@main_bp.get("/health/live")
+def health_live():
+    return jsonify({"ok": True, "status": "alive"}), 200
+
+
+@main_bp.get("/health/ready")
+def health_ready():
+    database_ok, database_error = check_database_readiness()
+    payload = {
+        "ok": database_ok,
+        "status": "ready" if database_ok else "degraded",
+        "checks": {
+            "database": {
+                "ok": database_ok,
+            },
+            "vpn_auto_provisioning": {
+                "enabled": is_vpn_auto_provisioning_enabled(),
+            },
+        },
+    }
+    if database_error:
+        payload["checks"]["database"]["error"] = database_error
+    return jsonify(payload), 200 if database_ok else 503
+
+
 @main_bp.route("/")
 def index():
     tariffs = (
@@ -295,6 +372,11 @@ def login():
             login_user(user)
             next_page = request.args.get("next")
             flash("Вы успешно вошли в аккаунт.", "success")
+            if should_enforce_email_verification() and not user_email_is_verified(user):
+                flash(
+                    "Подтвердите email. До подтверждения часть действий будет недоступна.",
+                    "warning",
+                )
             if is_safe_redirect_url(next_page):
                 return redirect(next_page)
             return redirect(url_for("main.dashboard"))
@@ -323,6 +405,23 @@ def register():
         flash(
             "Аккаунт создан. Теперь можно выбрать тариф в личном кабинете.", "success"
         )
+        if is_email_verification_enabled():
+            try:
+                send_result = send_email_verification_message(user, ignore_cooldown=True)
+            except EmailVerificationError as error:
+                flash(str(error), "warning")
+            else:
+                if send_result["delivered"]:
+                    flash(
+                        "Мы отправили письмо для подтверждения email. Проверьте почту.",
+                        "info",
+                    )
+                else:
+                    flash(
+                        "Письмо для подтверждения не отправлено автоматически. "
+                        "Ссылка сохранена в логах приложения.",
+                        "warning",
+                    )
         return redirect(url_for("main.dashboard"))
 
     return render_template("register.html", form=form)
@@ -367,15 +466,67 @@ def dashboard():
         tariffs=tariffs,
         devices=devices,
         vpn_auto_provisioning_enabled=is_vpn_auto_provisioning_enabled(),
+        email_verification_enabled=is_email_verification_enabled(),
+        email_verification_required=should_enforce_email_verification(),
+        email_verified=user_email_is_verified(current_user),
         request_form=SubscriptionRequestForm(),
         device_form=DeviceCreateForm(),
         device_action_form=DeviceActionForm(),
+        email_verification_resend_form=EmailVerificationResendForm(),
     )
+
+
+@main_bp.route("/email-verification/resend", methods=["POST"])
+@login_required
+def resend_email_verification():
+    form = EmailVerificationResendForm()
+    if not form.validate_on_submit():
+        flash("Некорректный запрос на повторную отправку.", "danger")
+        return redirect(url_for("main.dashboard"))
+
+    if not is_email_verification_enabled():
+        flash("Подтверждение email отключено в текущей конфигурации.", "warning")
+        return redirect(url_for("main.dashboard"))
+
+    if user_email_is_verified(current_user):
+        flash("Email уже подтвержден.", "info")
+        return redirect(url_for("main.dashboard"))
+
+    try:
+        send_result = send_email_verification_message(current_user, ignore_cooldown=False)
+    except EmailVerificationError as error:
+        flash(str(error), "warning")
+        return redirect(url_for("main.dashboard"))
+
+    if send_result["delivered"]:
+        flash("Письмо подтверждения отправлено повторно.", "success")
+    else:
+        flash(
+            "SMTP не настроен, ссылка подтверждения записана в лог приложения.",
+            "warning",
+        )
+    return redirect(url_for("main.dashboard"))
+
+
+@main_bp.route("/verify-email/<string:token>")
+def verify_email(token):
+    try:
+        user = verify_email_token(token)
+    except EmailVerificationError as error:
+        flash(str(error), "danger")
+        return redirect(url_for("main.login"))
+
+    if user_email_is_verified(user):
+        flash("Email подтвержден.", "success")
+    return redirect(url_for("main.dashboard" if current_user.is_authenticated else "main.login"))
 
 
 @main_bp.route("/subscriptions/request", methods=["POST"])
 @login_required
 def request_subscription():
+    if not enforce_verified_email_or_redirect():
+        return redirect(url_for("main.dashboard"))
+
     form = SubscriptionRequestForm()
     if not form.validate_on_submit():
         flash("Выберите корректный тариф.", "danger")
@@ -406,6 +557,9 @@ def request_subscription():
 @main_bp.route("/devices", methods=["POST"])
 @login_required
 def add_device():
+    if not enforce_verified_email_or_redirect():
+        return redirect(url_for("main.dashboard"))
+
     form = DeviceCreateForm()
     current_subscription = get_current_subscription(current_user)
     is_admin_unlimited = current_user.is_admin
@@ -440,7 +594,7 @@ def add_device():
             db.session.commit()
             flash(
                 "Устройство добавлено, но выдача VPN завершилась ошибкой. "
-                "Попробуйте позже или перепроверьте SSH/Xray.",
+                "Попробуйте позже или обратитесь в поддержку.",
                 "warning",
             )
             return redirect(url_for("main.dashboard"))
@@ -452,7 +606,7 @@ def add_device():
 
     db.session.commit()
     flash(
-        "Устройство добавлено. Автовыдача VPN не настроена, поэтому слот ждёт обработки.",
+        "Устройство добавлено. Доступ будет подготовлен в ближайшее время.",
         "success",
     )
     return redirect(url_for("main.dashboard"))
@@ -461,6 +615,9 @@ def add_device():
 @main_bp.route("/devices/<string:device_id>/revoke", methods=["POST"])
 @login_required
 def revoke_device(device_id):
+    if not enforce_verified_email_or_redirect():
+        return redirect(url_for("main.dashboard"))
+
     form = DeviceActionForm()
     if not form.validate_on_submit():
         flash("Некорректный запрос на отзыв устройства.", "danger")
@@ -484,7 +641,7 @@ def revoke_device(device_id):
     except VpnProvisioningError as error:
         device.record_provisioning_error(str(error))
         db.session.commit()
-        flash("Не удалось отозвать VPN-конфиг устройства.", "danger")
+        flash("Не удалось отключить устройство. Попробуйте позже.", "danger")
         return redirect(url_for("main.dashboard"))
 
     device.mark_revoked()
@@ -499,13 +656,17 @@ def admin_dashboard():
     for user in User.query.all():
         sync_user_subscriptions(user)
 
+    processed_statuses = ("approved", "paid")
     stats = {
         "users_total": User.query.count(),
         "admins_total": User.query.filter_by(is_admin=True).count(),
         "subscriptions_total": Subscription.query.count(),
         "subscriptions_active": Subscription.query.filter_by(status="active").count(),
         "invoices_total": Invoice.query.count(),
-        "invoices_approved": Invoice.query.filter_by(status="approved").count(),
+        "invoices_approved": Invoice.query.filter(
+            Invoice.status.in_(processed_statuses)
+        ).count(),
+        "invoices_paid": Invoice.query.filter_by(status="paid").count(),
         "requests_pending": Invoice.query.filter_by(
             type=SUBSCRIPTION_REQUEST_TYPE, status="pending"
         ).count(),
@@ -606,10 +767,13 @@ def admin_user_detail(user_id):
     revoked_devices_count = sum(1 for device in devices if is_device_removable(device))
     role_form = AdminActionForm(prefix="role")
     status_form = AdminActionForm(prefix="status")
+    verify_email_form = AdminActionForm(prefix="verify-email")
+    delete_user_form = AdminActionForm(prefix="delete-user")
     deposit_form = BalanceAdjustmentForm(prefix="deposit")
     charge_form = BalanceAdjustmentForm(prefix="charge")
     invoice_action_form = AdminActionForm()
     device_forms = {}
+    vpn_email_forms = {}
     subscription_forms = {}
 
     for device in devices:
@@ -619,6 +783,10 @@ def admin_user_detail(user_id):
         form.assigned_ip.data = device.assigned_ip
         form.last_error.data = device.last_error
         device_forms[device.id] = form
+
+        vpn_email_form = AdminDeviceVpnEmailForm(prefix=f"vpn-email-{device.id}")
+        vpn_email_form.vpn_email.data = device.vpn_email or ""
+        vpn_email_forms[device.id] = vpn_email_form
 
     for subscription in subscriptions:
         form = AdminSubscriptionExpiryForm(prefix=f"subscription-{subscription.id}")
@@ -636,10 +804,13 @@ def admin_user_detail(user_id):
         vpn_auto_provisioning_enabled=is_vpn_auto_provisioning_enabled(),
         role_form=role_form,
         status_form=status_form,
+        verify_email_form=verify_email_form,
+        delete_user_form=delete_user_form,
         deposit_form=deposit_form,
         charge_form=charge_form,
         invoice_action_form=invoice_action_form,
         vpn_action_form=AdminActionForm(),
+        vpn_email_forms=vpn_email_forms,
         subscription_forms=subscription_forms,
         device_forms=device_forms,
         revoked_devices_count=revoked_devices_count,
@@ -695,6 +866,62 @@ def admin_toggle_user_active(user_id):
     db.session.commit()
     flash("Статус пользователя обновлен.", "success")
     return redirect(url_for("main.admin_user_detail", user_id=user_id))
+
+
+@main_bp.route("/admin/users/<string:user_id>/verify-email", methods=["POST"])
+@admin_required
+def admin_verify_user_email(user_id):
+    form = AdminActionForm(prefix="verify-email")
+    if not form.validate_on_submit():
+        flash("Некорректный запрос на подтверждение email.", "danger")
+        return redirect(url_for("main.admin_user_detail", user_id=user_id))
+
+    user = db.session.get(User, user_id)
+    if user is None:
+        flash("Пользователь не найден.", "warning")
+        return redirect(url_for("main.admin_users"))
+
+    if user_email_is_verified(user):
+        flash("Email пользователя уже подтвержден.", "info")
+        return redirect(url_for("main.admin_user_detail", user_id=user_id))
+
+    user.mark_email_verified()
+    db.session.commit()
+    flash("Email пользователя подтвержден вручную.", "success")
+    return redirect(url_for("main.admin_user_detail", user_id=user_id))
+
+
+@main_bp.route("/admin/users/<string:user_id>/delete", methods=["POST"])
+@admin_required
+def admin_delete_user(user_id):
+    form = AdminActionForm(prefix="delete-user")
+    if not form.validate_on_submit():
+        flash("Некорректный запрос на удаление пользователя.", "danger")
+        return redirect(url_for("main.admin_user_detail", user_id=user_id))
+
+    user = db.session.get(User, user_id)
+    if user is None:
+        flash("Пользователь не найден.", "warning")
+        return redirect(url_for("main.admin_users"))
+
+    if user.id == current_user.id:
+        flash("Нельзя удалить собственный аккаунт администратора.", "warning")
+        return redirect(url_for("main.admin_user_detail", user_id=user_id))
+
+    try:
+        summary = delete_user_account(user)
+    except VpnProvisioningError as error:
+        flash(f"Не удалось удалить пользователя: {error}", "danger")
+        return redirect(url_for("main.admin_user_detail", user_id=user_id))
+
+    flash(
+        "Пользователь удален безвозвратно. "
+        f"Удалено подписок: {summary['subscriptions_deleted']}, "
+        f"заявок/счетов: {summary['invoices_deleted']}, "
+        f"устройств: {summary['devices_deleted']}.",
+        "info",
+    )
+    return redirect(url_for("main.admin_users"))
 
 
 @main_bp.route("/admin/users/<string:user_id>/deposit", methods=["POST"])
@@ -939,6 +1166,60 @@ def admin_update_device(device_id):
     return redirect(
         url_for("main.admin_user_detail", user_id=device.subscription.user_id)
     )
+
+
+@main_bp.route("/admin/devices/<string:device_id>/vpn-email", methods=["POST"])
+@admin_required
+def admin_update_device_vpn_email(device_id):
+    device = db.session.get(Device, device_id)
+    if device is None:
+        flash("Устройство не найдено.", "warning")
+        return redirect(url_for("main.admin_dashboard"))
+
+    form = AdminDeviceVpnEmailForm(prefix=f"vpn-email-{device.id}")
+    if not form.validate_on_submit():
+        flash("Проверьте Xray email и повторите попытку.", "danger")
+        return redirect(
+            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+        )
+
+    if not is_vpn_auto_provisioning_enabled():
+        flash("SSH/VPN интеграция не настроена в текущем запуске Flask.", "warning")
+        return redirect(
+            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+        )
+
+    if not device.vpn_uuid:
+        flash("У устройства нет VPN UUID. Сначала выполните выдачу VPN.", "warning")
+        return redirect(
+            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+        )
+
+    new_email = form.vpn_email.data.strip()
+    if device.vpn_email == new_email:
+        flash("Xray email уже имеет это значение.", "info")
+        return redirect(
+            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+        )
+
+    try:
+        payload = update_server_vless_client_email(
+            client_uuid=device.vpn_uuid,
+            new_email=new_email,
+            device_name=device.name,
+        )
+    except VpnProvisioningError as error:
+        flash(f"Не удалось обновить Xray email: {error}", "danger")
+        return redirect(
+            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+        )
+
+    device.vpn_email = (payload.get("email") or new_email).strip()
+    if payload.get("link"):
+        device.vpn_link = payload["link"]
+    db.session.commit()
+    flash("Xray email обновлён без замены UUID и ссылки.", "success")
+    return redirect(url_for("main.admin_user_detail", user_id=device.subscription.user_id))
 
 
 @main_bp.route("/admin/devices/<string:device_id>/provision", methods=["POST"])

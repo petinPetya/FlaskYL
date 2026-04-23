@@ -1,10 +1,10 @@
 # Шаблон файла окружения для локальной разработки.
-# Скопируй его в `flask-env` и подставь свои значения:
+# Скопировать его в `flask-env` и подставить свои значения:
 #   cp flask-env.example flask-env
-# Затем загрузи его в shell перед запуском Flask:
+# Затем загрузить его в shell перед запуском Flask:
 #   set -a; source flask-env; set +a
 #
-# ВАЖНО: не коммить настоящий файл `flask-env`.
+# ВАЖНО: не коммитить настоящий файл `flask-env`.
 #
 # Если `DATABASE_URL` не задан, приложение использует локальную SQLite-базу:
 #   instance/site.db
@@ -13,6 +13,7 @@
 export SECRET_KEY='change-me-in-production'
 export LOG_LEVEL='INFO'
 export PREFERRED_URL_SCHEME='http'
+export BOOTSTRAP_SCHEMA_ON_STARTUP='1'
 
 # Файлы cookie
 export SESSION_COOKIE_SECURE='0'
@@ -23,3 +24,26 @@ export REMEMBER_COOKIE_SECURE='0'
 #
 # Пример для PostgreSQL (нужны сама БД и установленный драйвер):
 export DATABASE_URL='postgresql+psycopg://user:password@127.0.0.1:15433/lowlands_vpn'
+
+# VPN SSH интеграция (опционально)
+export VPN_AUTO_PROVISION='0'
+export VPN_SSH_COMMAND_TIMEOUT='20'
+export VPN_SSH_COMMAND_RETRIES='1'
+export VPN_SSH_RETRY_BACKOFF_SECONDS='0.75'
+export VPN_REMOTE_UPDATE_EMAIL_SCRIPT='/usr/local/sbin/xray-update-client-email'
+
+# Email verification (опционально)
+export EMAIL_VERIFICATION_ENABLED='1'
+export EMAIL_VERIFICATION_REQUIRED='0'
+export EMAIL_VERIFICATION_TOKEN_TTL_SECONDS='86400'
+export EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS='60'
+export PUBLIC_APP_URL='http://127.0.0.1:5000'
+
+# SMTP для отправки подтверждений (если SMTP_HOST пустой, ссылка уходит в лог)
+export SMTP_HOST=''
+export SMTP_PORT='587'
+export SMTP_USERNAME=''
+export SMTP_PASSWORD=''
+export SMTP_FROM=''
+export SMTP_USE_TLS='1'
+export SMTP_USE_SSL='0'

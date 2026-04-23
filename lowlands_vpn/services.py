@@ -162,3 +162,45 @@ def approve_subscription_request(invoice: Invoice, reviewer_id: str) -> Subscrip
     metadata["reviewed_at"] = utc_now().isoformat()
     invoice.set_metadata(metadata)
     return subscription
+
+
+def delete_user_account(user: User) -> dict[str, int]:
+    from lowlands_vpn.vpn import (
+        VpnProvisioningError,
+        is_vpn_auto_provisioning_enabled,
+        revoke_device_on_server,
+    )
+
+    devices = (
+        Device.query.join(Subscription)
+        .filter(Subscription.user_id == user.id)
+        .all()
+    )
+    vpn_cleanup_errors: list[str] = []
+    vpn_cleanup_attempts = 0
+
+    if is_vpn_auto_provisioning_enabled():
+        for device in devices:
+            if not device.vpn_uuid and not device.vpn_email:
+                continue
+            vpn_cleanup_attempts += 1
+            try:
+                revoke_device_on_server(device)
+            except VpnProvisioningError as error:
+                vpn_cleanup_errors.append(f"{device.name}: {error}")
+
+    if vpn_cleanup_errors:
+        raise VpnProvisioningError(
+            "Не удалось очистить VPN-клиентов перед удалением пользователя: "
+            + "; ".join(vpn_cleanup_errors)
+        )
+
+    summary = {
+        "devices_deleted": len(devices),
+        "subscriptions_deleted": user.subscriptions.count(),
+        "invoices_deleted": user.invoices.count(),
+        "vpn_cleanup_attempts": vpn_cleanup_attempts,
+    }
+    db.session.delete(user)
+    db.session.commit()
+    return summary

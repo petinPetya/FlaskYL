@@ -4,13 +4,21 @@ from functools import wraps
 
 from flask import Blueprint, request
 from flask_login import current_user, login_user, logout_user
+from flask_wtf.csrf import generate_csrf
 
 from lowlands_vpn.data import PLANS
+from lowlands_vpn.email_verification import (
+    EmailVerificationError,
+    is_email_verification_enabled,
+    is_email_verification_required,
+    send_email_verification_message,
+)
 from lowlands_vpn.extensions import db
 from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
 from lowlands_vpn.services import (
     SUBSCRIPTION_REQUEST_TYPE,
     create_subscription_request,
+    delete_user_account,
     get_current_subscription,
     get_pending_subscription_request,
     sync_user_subscriptions,
@@ -60,6 +68,26 @@ def api_admin_required(view_func):
         if not current_user.is_admin:
             return json_error("Требуются права администратора.", 403)
         return view_func(*args, **kwargs)
+
+    return wrapped
+
+
+def user_email_is_verified(user: User) -> bool:
+    return bool(user.email_verified_at)
+
+
+def api_email_verification_required(view_func):
+    @wraps(view_func)
+    @api_login_required
+    def wrapped(*args, **kwargs):
+        if not is_email_verification_required():
+            return view_func(*args, **kwargs)
+        if user_email_is_verified(current_user):
+            return view_func(*args, **kwargs)
+        return json_error(
+            "Подтвердите email перед выполнением этого действия.",
+            403,
+        )
 
     return wrapped
 
@@ -151,10 +179,17 @@ def serialize_invoice(invoice: Invoice) -> dict:
         "amount_rub": f"{invoice.amount_cents / 100:.2f}",
         "status": invoice.status,
         "type": invoice.type,
+        "review_channel": invoice.review_channel,
+        "review_reference": invoice.review_reference,
+        "external_url": invoice.external_url,
+        "payment_system": invoice.payment_system,
+        "payment_system_id": invoice.payment_system_id,
+        "payment_url": invoice.payment_url,
         "description": invoice.description,
         "metadata": invoice.get_metadata(),
         "created_at": serialize_datetime(invoice.created_at),
         "processed_at": serialize_datetime(invoice.processed_at),
+        "paid_at": serialize_datetime(invoice.paid_at),
         "tariff": serialize_tariff(tariff) if tariff else None,
     }
 
@@ -167,6 +202,9 @@ def serialize_user(user: User, include_relations: bool = False) -> dict:
         "balance_rub": f"{user.balance / 100:.2f}",
         "is_active": user.is_active,
         "is_admin": user.is_admin,
+        "is_email_verified": user_email_is_verified(user),
+        "email_verified_at": serialize_datetime(user.email_verified_at),
+        "email_verification_sent_at": serialize_datetime(user.email_verification_sent_at),
         "created_at": serialize_datetime(user.created_at),
         "last_login_at": serialize_datetime(user.last_login_at),
         "updated_at": serialize_datetime(user.updated_at),
@@ -197,9 +235,11 @@ def api_index():
             "endpoints": [
                 "/api",
                 "/api/tariffs",
+                "/api/auth/csrf",
                 "/api/auth/login",
                 "/api/auth/logout",
                 "/api/auth/me",
+                "/api/auth/resend-verification",
                 "/api/invoices",
                 "/api/subscriptions/current",
                 "/api/subscriptions/request",
@@ -207,6 +247,8 @@ def api_index():
                 "/api/devices/<device_id>/revoke",
                 "/api/admin/overview",
                 "/api/admin/users",
+                "/api/admin/users/<user_id>/verify-email",
+                "/api/admin/users/<user_id>/delete",
                 "/api/admin/server-vless-clients",
             ],
         }
@@ -242,6 +284,41 @@ def api_login():
     db.session.commit()
     login_user(user)
     return json_success({"user": serialize_user(user)}, message="Авторизация выполнена.")
+
+
+@api_bp.get("/auth/csrf")
+def api_csrf_token():
+    return json_success(
+        {"csrf_token": generate_csrf()},
+        message="CSRF token issued.",
+    )
+
+
+@api_bp.post("/auth/resend-verification")
+@api_login_required
+def api_resend_verification():
+    if not is_email_verification_enabled():
+        return json_error("Подтверждение email отключено.", 400)
+
+    if user_email_is_verified(current_user):
+        return json_success(
+            {"is_email_verified": True},
+            message="Email уже подтвержден.",
+        )
+
+    try:
+        result = send_email_verification_message(current_user, ignore_cooldown=False)
+    except EmailVerificationError as error:
+        return json_error(str(error), 429)
+
+    return json_success(
+        {
+            "is_email_verified": False,
+            "delivered": bool(result["delivered"]),
+            "delivery": result["delivery"],
+        },
+        message="Письмо подтверждения отправлено.",
+    )
 
 
 @api_bp.post("/auth/logout")
@@ -281,7 +358,7 @@ def api_current_subscription():
 
 
 @api_bp.post("/subscriptions/request")
-@api_login_required
+@api_email_verification_required
 def api_request_subscription():
     payload = get_json_payload()
     tariff_id = payload.get("tariff_id")
@@ -326,7 +403,7 @@ def api_devices():
 
 
 @api_bp.post("/devices")
-@api_login_required
+@api_email_verification_required
 def api_create_device():
     payload = get_json_payload()
     name = (payload.get("name") or "").strip()
@@ -386,7 +463,7 @@ def api_create_device():
 
 
 @api_bp.post("/devices/<string:device_id>/revoke")
-@api_login_required
+@api_email_verification_required
 def api_revoke_device(device_id: str):
     device = (
         Device.query.join(Subscription)
@@ -424,13 +501,17 @@ def api_admin_overview():
     for user in User.query.all():
         sync_user_subscriptions(user)
 
+    processed_statuses = ("approved", "paid")
     stats = {
         "users_total": User.query.count(),
         "admins_total": User.query.filter_by(is_admin=True).count(),
         "subscriptions_total": Subscription.query.count(),
         "subscriptions_active": Subscription.query.filter_by(status="active").count(),
         "invoices_total": Invoice.query.count(),
-            "invoices_approved": Invoice.query.filter_by(status="approved").count(),
+        "invoices_approved": Invoice.query.filter(
+            Invoice.status.in_(processed_statuses)
+        ).count(),
+        "invoices_paid": Invoice.query.filter_by(status="paid").count(),
         "requests_pending": Invoice.query.filter_by(
             type=SUBSCRIPTION_REQUEST_TYPE, status="pending"
         ).count(),
@@ -463,6 +544,51 @@ def api_admin_users():
     users = User.query.order_by(User.created_at.desc()).all()
     return json_success(
         {"users": [serialize_user(user, include_relations=True) for user in users]}
+    )
+
+
+@api_bp.post("/admin/users/<string:user_id>/delete")
+@api_admin_required
+def api_admin_delete_user(user_id: str):
+    user = db.session.get(User, user_id)
+    if user is None:
+        return json_error("Пользователь не найден.", 404)
+    if user.id == current_user.id:
+        return json_error("Нельзя удалить собственный аккаунт администратора.", 409)
+
+    try:
+        summary = delete_user_account(user)
+    except VpnProvisioningError as error:
+        return json_error(
+            "Не удалось удалить пользователя.",
+            502,
+            {"details": str(error)},
+        )
+
+    return json_success(
+        {"summary": summary},
+        message="Пользователь удален безвозвратно.",
+    )
+
+
+@api_bp.post("/admin/users/<string:user_id>/verify-email")
+@api_admin_required
+def api_admin_verify_user_email(user_id: str):
+    user = db.session.get(User, user_id)
+    if user is None:
+        return json_error("Пользователь не найден.", 404)
+
+    if user_email_is_verified(user):
+        return json_success(
+            {"user": serialize_user(user)},
+            message="Email пользователя уже подтвержден.",
+        )
+
+    user.mark_email_verified()
+    db.session.commit()
+    return json_success(
+        {"user": serialize_user(user)},
+        message="Email пользователя подтвержден вручную.",
     )
 
 

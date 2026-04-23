@@ -225,6 +225,7 @@ cython_debug/
 #  Для чувствительных данных см. https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+.codex
 
 # Локальные резервные копии
 backups/

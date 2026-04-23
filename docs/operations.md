@@ -10,6 +10,7 @@
   - `/usr/local/sbin/xray-remove-client`
   - `/usr/local/sbin/xray-build-vless-link`
   - `/usr/local/sbin/xray-list-clients`
+  - `/usr/local/sbin/xray-update-client-email`
 - Тег live inbound: `vless-reality-in`
 - Xray API: `127.0.0.1:10085`
 
@@ -96,6 +97,14 @@ ssh -F /dev/null -i /home/senamorsin/.ssh/lowlands_vpn_xray \
   /usr/local/sbin/xray-remove-client --uuid 00000000-0000-0000-0000-000000000099
 ```
 
+Переименовать Xray email без смены UUID:
+
+```bash
+ssh -F /dev/null -i /home/senamorsin/.ssh/lowlands_vpn_xray \
+  lowlands-vpn@147.45.224.143 \
+  /usr/local/sbin/xray-update-client-email --uuid 00000000-0000-0000-0000-000000000099 --email smoke-test-renamed@xray --json
+```
+
 Любая команда вне разрешённого списка должна отклоняться.
 
 ## Чек-лист восстановления
@@ -108,3 +117,54 @@ ssh -F /dev/null -i /home/senamorsin/.ssh/lowlands_vpn_xray \
 6. Проверить `systemctl status xray`.
 7. Проверить `xray-list-clients --json`.
 8. Запустить Flask с правильным `.flask-env`.
+
+## Сайт: deploy/smoke/rollback
+
+Переезд Flask-сайта на новый Ubuntu:
+
+```bash
+./scripts/migrate-web-server-ubuntu.sh \
+  --host <NEW_SERVER_IP> \
+  --root-key-path /path/to/root_key \
+  --domain example.com \
+  --vpn-key-path-local /home/senamorsin/.ssh/lowlands_vpn_xray
+```
+
+Перед заменой приложения скрипт создаёт rollback-бэкап на новом сервере
+в `/var/backups/lowlands-web` (или в каталоге из `--backup-root`).
+
+Регулярное обновление уже развернутого сервера:
+
+```bash
+./scripts/update-web-server-ubuntu.sh \
+  --host 194.87.130.123 \
+  --root-key-path /home/senamorsin/.ssh/lowlands_vpn_xray \
+  --domain localhost
+```
+
+Smoke после деплоя:
+
+```bash
+./scripts/smoke-test-web-server.sh \
+  --host <NEW_SERVER_IP> \
+  --root-key-path /path/to/root_key \
+  --domain example.com
+```
+
+Откат к конкретному backup:
+
+```bash
+./scripts/rollback-web-server-ubuntu.sh \
+  --host <NEW_SERVER_IP> \
+  --root-key-path /path/to/root_key \
+  --backup-dir /var/backups/lowlands-web/<TIMESTAMP>
+```
+
+Снять backup PostgreSQL на проде:
+
+```bash
+./scripts/backup-postgres-ubuntu.sh \
+  --host 194.87.130.123 \
+  --root-key-path /home/senamorsin/.ssh/lowlands_vpn_xray \
+  --db-name lowlands_vpn
+```

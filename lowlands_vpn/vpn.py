@@ -1,6 +1,7 @@
 import json
 import shlex
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass
 from urllib.parse import quote
@@ -159,6 +160,39 @@ def remove_server_vless_client_by_uuid(client_uuid: str) -> dict:
     return result.payload
 
 
+def update_server_vless_client_email(
+    client_uuid: str, new_email: str, device_name: str | None = None
+) -> dict:
+    if not is_vpn_auto_provisioning_enabled():
+        raise VpnProvisioningError("Автопровижининг VPN не настроен.")
+
+    if not client_uuid:
+        raise VpnProvisioningError("Не передан UUID клиента для обновления email.")
+
+    normalized_email = (new_email or "").strip()
+    if not normalized_email:
+        raise VpnProvisioningError("Не передан новый email клиента.")
+
+    script_path = current_app.config.get("VPN_REMOTE_UPDATE_EMAIL_SCRIPT")
+    if not script_path:
+        raise VpnProvisioningError(
+            "Не настроен путь до скрипта VPN_REMOTE_UPDATE_EMAIL_SCRIPT."
+        )
+
+    command_args = [
+        "--uuid",
+        client_uuid,
+        "--email",
+        normalized_email,
+        "--json",
+    ]
+    if device_name:
+        command_args.extend(["--name", device_name])
+
+    result = run_remote_json_command(script_path, *command_args)
+    return result.payload
+
+
 def run_remote_json_command(script_path: str, *script_args: str) -> RemoteCommandResult:
     result = run_remote_command(script_path, *script_args)
     payload = {}
@@ -208,22 +242,103 @@ def run_remote_command(
     remote_command = " ".join(
         shlex.quote(part) for part in (script_path, *script_args) if part
     )
-
-    completed_process = subprocess.run(
-        [*ssh_command, remote_command],
-        capture_output=True,
-        check=False,
-        text=True,
+    command_timeout = max(
+        float(current_app.config.get("VPN_SSH_COMMAND_TIMEOUT", 20.0)),
+        1.0,
     )
-    if completed_process.returncode != 0:
+    retry_attempts = max(int(current_app.config.get("VPN_SSH_COMMAND_RETRIES", 1)), 0)
+    retry_backoff = max(
+        float(current_app.config.get("VPN_SSH_RETRY_BACKOFF_SECONDS", 0.75)),
+        0.0,
+    )
+    max_attempts = retry_attempts + 1
+    last_error: VpnProvisioningError | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            try:
+                completed_process = subprocess.run(
+                    [*ssh_command, remote_command],
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    timeout=command_timeout,
+                )
+            except TypeError:
+                # Test doubles can monkeypatch subprocess.run without timeout kwarg.
+                completed_process = subprocess.run(
+                    [*ssh_command, remote_command],
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                )
+        except subprocess.TimeoutExpired as error:
+            last_error = VpnProvisioningError(
+                f"VPN SSH command timed out after {command_timeout:.1f}s: {script_path}"
+            )
+            if attempt < max_attempts:
+                _sleep_before_retry(attempt, retry_backoff)
+                continue
+            raise last_error from error
+        except OSError as error:
+            last_error = VpnProvisioningError(f"VPN SSH command failed to start: {error}")
+            if attempt < max_attempts and _is_retryable_ssh_error(str(error)):
+                _sleep_before_retry(attempt, retry_backoff)
+                continue
+            raise last_error from error
+
+        if completed_process.returncode == 0:
+            return completed_process
+
         error_output = (
             completed_process.stderr.strip() or completed_process.stdout.strip()
         )
-        raise VpnProvisioningError(
+        last_error = VpnProvisioningError(
             error_output
             or f"VPN command failed with code {completed_process.returncode}"
         )
-    return completed_process
+
+        if attempt < max_attempts and _is_retryable_ssh_error(error_output):
+            _sleep_before_retry(attempt, retry_backoff)
+            continue
+
+        raise last_error
+
+    if last_error is not None:
+        raise last_error
+    raise VpnProvisioningError("VPN SSH command failed for an unknown reason.")
+
+
+def _sleep_before_retry(attempt: int, base_backoff: float) -> None:
+    if base_backoff <= 0:
+        return
+    delay_seconds = min(base_backoff * attempt, 5.0)
+    time.sleep(delay_seconds)
+
+
+def _is_retryable_ssh_error(error_message: str) -> bool:
+    if not error_message:
+        return False
+
+    message = error_message.strip().lower()
+    retryable_fragments = (
+        "timed out",
+        "timeout",
+        "connection refused",
+        "connection reset",
+        "connection closed",
+        "broken pipe",
+        "no route to host",
+        "network is unreachable",
+        "temporary failure in name resolution",
+        "could not resolve hostname",
+        "kex_exchange_identification",
+        "connection unexpectedly closed",
+        "banner exchange",
+        "software caused connection abort",
+        "resource temporarily unavailable",
+    )
+    return any(fragment in message for fragment in retryable_fragments)
 
 
 def _looks_like_existing_client_error(error_message: str) -> bool:

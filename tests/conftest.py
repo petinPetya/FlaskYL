@@ -26,6 +26,8 @@ def app(tmp_path: Path):
             "VPN_SSH_HOST": "",
             "VPN_SSH_USER": "",
             "VPN_SSH_KEY_PATH": "",
+            "VPN_SSH_COMMAND_RETRIES": 0,
+            "VPN_SSH_RETRY_BACKOFF_SECONDS": 0,
             "VPN_REMOTE_ADD_SCRIPT": "",
             "VPN_REMOTE_REMOVE_SCRIPT": "",
             "VPN_REMOTE_BUILD_LINK_SCRIPT": "",

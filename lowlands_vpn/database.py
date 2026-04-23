@@ -8,6 +8,10 @@ from lowlands_vpn.extensions import db
 from lowlands_vpn.models import Tariff
 
 ADDITIVE_SCHEMA_PATCHES = {
+    "users": {
+        "email_verified_at": "ALTER TABLE users ADD COLUMN email_verified_at DATETIME",
+        "email_verification_sent_at": "ALTER TABLE users ADD COLUMN email_verification_sent_at DATETIME",
+    },
     "tariffs": {
         "device_limit": "ALTER TABLE tariffs ADD COLUMN device_limit INTEGER DEFAULT 1 NOT NULL",
     },
@@ -72,6 +76,17 @@ def apply_additive_schema_patches() -> None:
 
         for column_name in pending_columns:
             db.session.execute(text(patches[column_name]))
+
+        if table_name == "users" and "email_verified_at" in pending_columns:
+            db.session.execute(
+                text(
+                    """
+                    UPDATE users
+                    SET email_verified_at = CURRENT_TIMESTAMP
+                    WHERE email_verified_at IS NULL
+                    """
+                )
+            )
 
         db.session.commit()
         inspector = inspect(db.engine)
