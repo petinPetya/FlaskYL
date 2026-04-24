@@ -23,18 +23,14 @@ from lowlands_vpn.forms import (
     BalanceAdjustmentForm,
     DeviceActionForm,
     DeviceCreateForm,
-    EmailVerificationResendForm,
     LoginForm,
     LogoutForm,
     RegisterForm,
     SubscriptionRequestForm,
 )
 from lowlands_vpn.email_verification import (
-    EmailVerificationError,
     is_email_verification_enabled,
     is_email_verification_required,
-    send_email_verification_message,
-    verify_email_token,
 )
 from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
 from lowlands_vpn.services import (
@@ -406,22 +402,10 @@ def register():
             "Аккаунт создан. Теперь можно выбрать тариф в личном кабинете.", "success"
         )
         if is_email_verification_enabled():
-            try:
-                send_result = send_email_verification_message(user, ignore_cooldown=True)
-            except EmailVerificationError as error:
-                flash(str(error), "warning")
-            else:
-                if send_result["delivered"]:
-                    flash(
-                        "Мы отправили письмо для подтверждения email. Проверьте почту.",
-                        "info",
-                    )
-                else:
-                    flash(
-                        "Письмо для подтверждения не отправлено автоматически. "
-                        "Ссылка сохранена в логах приложения.",
-                        "warning",
-                    )
+            flash(
+                "Подтверждение email выполняется администратором.",
+                "info",
+            )
         return redirect(url_for("main.dashboard"))
 
     return render_template("register.html", form=form)
@@ -472,53 +456,7 @@ def dashboard():
         request_form=SubscriptionRequestForm(),
         device_form=DeviceCreateForm(),
         device_action_form=DeviceActionForm(),
-        email_verification_resend_form=EmailVerificationResendForm(),
     )
-
-
-@main_bp.route("/email-verification/resend", methods=["POST"])
-@login_required
-def resend_email_verification():
-    form = EmailVerificationResendForm()
-    if not form.validate_on_submit():
-        flash("Некорректный запрос на повторную отправку.", "danger")
-        return redirect(url_for("main.dashboard"))
-
-    if not is_email_verification_enabled():
-        flash("Подтверждение email отключено в текущей конфигурации.", "warning")
-        return redirect(url_for("main.dashboard"))
-
-    if user_email_is_verified(current_user):
-        flash("Email уже подтвержден.", "info")
-        return redirect(url_for("main.dashboard"))
-
-    try:
-        send_result = send_email_verification_message(current_user, ignore_cooldown=False)
-    except EmailVerificationError as error:
-        flash(str(error), "warning")
-        return redirect(url_for("main.dashboard"))
-
-    if send_result["delivered"]:
-        flash("Письмо подтверждения отправлено повторно.", "success")
-    else:
-        flash(
-            "SMTP не настроен, ссылка подтверждения записана в лог приложения.",
-            "warning",
-        )
-    return redirect(url_for("main.dashboard"))
-
-
-@main_bp.route("/verify-email/<string:token>")
-def verify_email(token):
-    try:
-        user = verify_email_token(token)
-    except EmailVerificationError as error:
-        flash(str(error), "danger")
-        return redirect(url_for("main.login"))
-
-    if user_email_is_verified(user):
-        flash("Email подтвержден.", "success")
-    return redirect(url_for("main.dashboard" if current_user.is_authenticated else "main.login"))
 
 
 @main_bp.route("/subscriptions/request", methods=["POST"])
@@ -689,7 +627,11 @@ def admin_dashboard():
 
     if is_vpn_auto_provisioning_enabled():
         try:
-            server_payload = list_server_vless_clients()
+            server_payload = list_server_vless_clients(
+                timeout_seconds=8.0,
+                retry_attempts=0,
+                retry_backoff_seconds=0.0,
+            )
             server_vless_stats_enabled = server_payload["stats_enabled"]
             uuids = [
                 client.get("uuid")

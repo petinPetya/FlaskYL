@@ -24,9 +24,8 @@
                             </div>
                             <div class="col-md-6">
                                 {{ form.password.label(class="form-label") }} {{
-                                form.password(class="form-control
-                                form-control-lg", placeholder="Не менее 8
-                                символов") }} {% for error in
+                                form.password(class="form-control form-control-lg",
+                                placeholder="Не менее 8 символов") }} {% for error in
                                 form.password.errors %}
                                 <div class="form-error mt-2">{{ error }}</div>
                                 {% endfor %}
@@ -34,9 +33,8 @@
                             <div class="col-md-6">
                                 {{
                                 form.confirm_password.label(class="form-label")
-                                }} {{ form.confirm_password(class="form-control
-                                form-control-lg", placeholder="Повторите
-                                пароль") }} {% for error in
+                                }} {{ form.confirm_password(class="form-control form-control-lg",
+                                placeholder="Повторите пароль") }} {% for error in
                                 form.confirm_password.errors %}
                                 <div class="form-error mt-2">{{ error }}</div>
                                 {% endfor %}

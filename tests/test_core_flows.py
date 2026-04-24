@@ -1,7 +1,6 @@
 import json
 from datetime import timedelta
 
-from lowlands_vpn.email_verification import generate_email_verification_token
 from lowlands_vpn.extensions import db
 from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
 
@@ -171,19 +170,10 @@ def test_user_can_create_pending_subscription_request(app, client):
     assert Subscription.query.count() == 0
 
 
-def test_user_can_verify_email_via_token_link(app, client):
+def test_email_verification_link_route_is_disabled(app, client):
     register_user(client, "verify@example.com")
-    user = db.session.scalar(db.select(User).where(User.email == "verify@example.com"))
-    assert user is not None
-    assert user.is_email_verified is False
-
-    token = generate_email_verification_token(user)
-    response = client.get(f"/verify-email/{token}", follow_redirects=True)
-
-    db.session.refresh(user)
-    assert response.status_code == 200
-    assert "Email подтвержден." in response.get_data(as_text=True)
-    assert user.is_email_verified is True
+    response = client.get("/verify-email/any-token", follow_redirects=True)
+    assert response.status_code == 404
 
 
 def test_email_verification_can_be_required_for_subscription_actions(app, client):
@@ -217,28 +207,10 @@ def test_email_verification_can_be_required_for_subscription_actions(app, client
     assert Invoice.query.count() == 1
 
 
-def test_user_can_resend_email_verification_link(app, client):
-    app.config["EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS"] = 0
+def test_email_verification_resend_route_is_disabled(app, client):
     register_user(client, "resend@example.com")
-    user = db.session.scalar(db.select(User).where(User.email == "resend@example.com"))
-    assert user is not None
-    first_sent_at = user.email_verification_sent_at
-    assert first_sent_at is not None
-
-    response = client.post(
-        "/email-verification/resend",
-        data={},
-        follow_redirects=True,
-    )
-
-    db.session.refresh(user)
-    assert response.status_code == 200
-    assert (
-        "Письмо подтверждения отправлено повторно." in response.get_data(as_text=True)
-        or "SMTP не настроен" in response.get_data(as_text=True)
-    )
-    assert user.email_verification_sent_at is not None
-    assert user.email_verification_sent_at >= first_sent_at
+    response = client.post("/email-verification/resend", data={}, follow_redirects=True)
+    assert response.status_code == 404
 
 
 def test_admin_can_approve_subscription_request(app, client):
@@ -1945,6 +1917,28 @@ def test_admin_api_overview_and_users_endpoints(app, client):
         "api-admin@example.com",
         "api-user@example.com",
     }
+
+
+def test_admin_api_live_dashboard_endpoint(app, client):
+    register_user(client, "api-admin@example.com")
+    grant_admin("api-admin@example.com")
+    logout_user(client)
+    register_user(client, "api-user@example.com")
+    logout_user(client)
+    api_login(client, "api-admin@example.com")
+
+    response = client.get("/api/admin/live-dashboard")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["data"]["stats"]["users_total"] == 2
+    assert "timestamp" in payload["data"]
+    assert "host" in payload["data"]
+    assert "vpn" in payload["data"]
+    assert "cpu_percent" in payload["data"]["host"]
+    assert "load_avg" in payload["data"]["host"]
+    assert payload["data"]["vpn"]["auto_provisioning_enabled"] is False
 
 
 def test_admin_api_can_delete_user(app, client):

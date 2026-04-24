@@ -98,10 +98,6 @@ class LogoutForm(FlaskForm):
     submit = SubmitField("Выйти")
 
 
-class EmailVerificationResendForm(FlaskForm):
-    submit = SubmitField("Отправить ссылку ещё раз")
-
-
 class AdminActionForm(FlaskForm):
     submit = SubmitField("Подтвердить")
 

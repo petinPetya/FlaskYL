@@ -83,30 +83,17 @@ endblock %} {% block content %}
                     {% if email_verification_enabled and not email_verified %}
                     <div class="mini-panel mt-4">
                         <div class="mini-label">Подтверждение email</div>
-                        <div class="mini-value">
-                            Email еще не подтвержден
-                        </div>
+                        <div class="mini-value">Email еще не подтвержден</div>
                         <div class="mini-label mt-2">
                             {% if email_verification_required %}
                             Пока email не подтвержден, управление подпиской и
-                            устройствами ограничено.
+                            устройствами ограничено. Подтверждение выполняет
+                            администратор.
                             {% else %}
-                            Рекомендуем подтвердить email для защиты аккаунта.
+                            Подтверждение выполняется администратором после
+                            проверки аккаунта.
                             {% endif %}
                         </div>
-                        <form
-                            method="post"
-                            action="{{ url_for('main.resend_email_verification') }}"
-                            class="mt-3"
-                        >
-                            {{ email_verification_resend_form.hidden_tag() }}
-                            <button
-                                class="btn btn-sm btn-outline-dark"
-                                type="submit"
-                            >
-                                Отправить письмо еще раз
-                            </button>
-                        </form>
                     </div>
                     {% endif %}
 

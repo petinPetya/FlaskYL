@@ -193,8 +193,20 @@ def update_server_vless_client_email(
     return result.payload
 
 
-def run_remote_json_command(script_path: str, *script_args: str) -> RemoteCommandResult:
-    result = run_remote_command(script_path, *script_args)
+def run_remote_json_command(
+    script_path: str,
+    *script_args: str,
+    timeout_seconds: float | None = None,
+    retry_attempts: int | None = None,
+    retry_backoff_seconds: float | None = None,
+) -> RemoteCommandResult:
+    result = run_remote_command(
+        script_path,
+        *script_args,
+        timeout_seconds=timeout_seconds,
+        retry_attempts=retry_attempts,
+        retry_backoff_seconds=retry_backoff_seconds,
+    )
     payload = {}
     if result.stdout:
         try:
@@ -209,7 +221,11 @@ def run_remote_json_command(script_path: str, *script_args: str) -> RemoteComman
 
 
 def run_remote_command(
-    script_path: str, *script_args: str
+    script_path: str,
+    *script_args: str,
+    timeout_seconds: float | None = None,
+    retry_attempts: int | None = None,
+    retry_backoff_seconds: float | None = None,
 ) -> subprocess.CompletedProcess:
     ssh_command = [
         "ssh",
@@ -243,15 +259,30 @@ def run_remote_command(
         shlex.quote(part) for part in (script_path, *script_args) if part
     )
     command_timeout = max(
-        float(current_app.config.get("VPN_SSH_COMMAND_TIMEOUT", 20.0)),
+        float(
+            timeout_seconds
+            if timeout_seconds is not None
+            else current_app.config.get("VPN_SSH_COMMAND_TIMEOUT", 20.0)
+        ),
         1.0,
     )
-    retry_attempts = max(int(current_app.config.get("VPN_SSH_COMMAND_RETRIES", 1)), 0)
+    retries = max(
+        int(
+            retry_attempts
+            if retry_attempts is not None
+            else current_app.config.get("VPN_SSH_COMMAND_RETRIES", 1)
+        ),
+        0,
+    )
     retry_backoff = max(
-        float(current_app.config.get("VPN_SSH_RETRY_BACKOFF_SECONDS", 0.75)),
+        float(
+            retry_backoff_seconds
+            if retry_backoff_seconds is not None
+            else current_app.config.get("VPN_SSH_RETRY_BACKOFF_SECONDS", 0.75)
+        ),
         0.0,
     )
-    max_attempts = retry_attempts + 1
+    max_attempts = retries + 1
     last_error: VpnProvisioningError | None = None
 
     for attempt in range(1, max_attempts + 1):
@@ -348,13 +379,21 @@ def _looks_like_existing_client_error(error_message: str) -> bool:
     )
 
 
-def list_server_vless_clients() -> dict:
+def list_server_vless_clients(
+    *,
+    timeout_seconds: float | None = None,
+    retry_attempts: int | None = None,
+    retry_backoff_seconds: float | None = None,
+) -> dict:
     if not is_vpn_auto_provisioning_enabled():
         raise VpnProvisioningError("Автопровижининг VPN не настроен.")
 
     result = run_remote_json_command(
         current_app.config["VPN_REMOTE_LIST_SCRIPT"],
         "--json",
+        timeout_seconds=timeout_seconds,
+        retry_attempts=retry_attempts,
+        retry_backoff_seconds=retry_backoff_seconds,
     )
     return {
         "stats_enabled": bool(result.payload.get("stats_enabled", False)),

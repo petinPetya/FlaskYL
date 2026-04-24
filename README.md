@@ -54,20 +54,8 @@ alembic upgrade head
 
 - `EMAIL_VERIFICATION_ENABLED`
 - `EMAIL_VERIFICATION_REQUIRED`
-- `EMAIL_VERIFICATION_TOKEN_TTL_SECONDS`
-- `EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS`
-- `EMAIL_VERIFICATION_SALT`
-- `PUBLIC_APP_URL`
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_USERNAME`
-- `SMTP_PASSWORD`
-- `SMTP_FROM`
-- `SMTP_USE_TLS`
-- `SMTP_USE_SSL`
 
-Если `SMTP_HOST` не задан, письмо не отправляется в сеть: ссылка подтверждения
-пишется в лог приложения.
+Подтверждение email выполняется вручную администратором.
 При миграции существующие пользователи автоматически помечаются как уже подтвержденные.
 
 ### API + CSRF для session-auth
@@ -81,8 +69,8 @@ curl -s http://127.0.0.1:5000/api/auth/csrf
 ```
 
 Далее передавать его в заголовке `X-CSRFToken` для `/api/auth/login`, `/api/auth/logout`,
-`/api/auth/resend-verification`, `/api/subscriptions/request`, `/api/devices`,
-`/api/devices/<id>/revoke` и прочих `POST` endpoint'ов.
+`/api/subscriptions/request`, `/api/devices`, `/api/devices/<id>/revoke`
+и прочих `POST` endpoint'ов.
 
 Health endpoints для мониторинга и smoke-проверок:
 
@@ -217,6 +205,13 @@ alembic revision --autogenerate -m "your message"
   --host 194.87.130.123 \
   --root-key-path /home/senamorsin/.ssh/lowlands_vpn_xray \
   --db-name lowlands_vpn
+```
+
+```bash
+./scripts/setup-authoritative-dns-ubuntu.sh \
+  --host 194.87.130.123 \
+  --root-key-path /home/senamorsin/.ssh/lowlands_vpn_xray \
+  --zone your-domain.example
 ```
 
 ## VPN helper scripts

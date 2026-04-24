@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from collections import deque
 from functools import wraps
+import os
+from threading import Lock
+import time
 
 from flask import Blueprint, request
 from flask_login import current_user, login_user, logout_user
@@ -8,10 +12,7 @@ from flask_wtf.csrf import generate_csrf
 
 from lowlands_vpn.data import PLANS
 from lowlands_vpn.email_verification import (
-    EmailVerificationError,
-    is_email_verification_enabled,
     is_email_verification_required,
-    send_email_verification_message,
 )
 from lowlands_vpn.extensions import db
 from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
@@ -32,6 +33,315 @@ from lowlands_vpn.vpn import (
 )
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
+
+LIVE_METRICS_CACHE_SECONDS = 4.0
+LIVE_METRICS_HISTORY_LIMIT = 90
+ADMIN_VPN_LIST_TIMEOUT_SECONDS = 8.0
+ADMIN_VPN_LIST_RETRY_ATTEMPTS = 0
+ADMIN_VPN_FAILURE_BACKOFF_SECONDS = 60.0
+LIVE_METRICS_LOCK = Lock()
+LIVE_METRICS_STATE = {
+    "cache_until": 0.0,
+    "cached_payload": None,
+    "last_cpu_sample": None,
+    "last_cpu_percent": None,
+    "last_clients_totals": {},
+    "last_clients_ts": None,
+    "throughput_history": deque(maxlen=LIVE_METRICS_HISTORY_LIMIT),
+    "online_history": deque(maxlen=LIVE_METRICS_HISTORY_LIMIT),
+    "vpn_cached_metrics": None,
+    "vpn_backoff_until": 0.0,
+}
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _read_cpu_sample() -> tuple[int, int] | None:
+    try:
+        with open("/proc/stat", "r", encoding="utf-8") as file:
+            first_line = file.readline().strip()
+    except OSError:
+        return None
+
+    parts = first_line.split()
+    if len(parts) < 5 or parts[0] != "cpu":
+        return None
+
+    values = []
+    for item in parts[1:]:
+        try:
+            values.append(int(item))
+        except ValueError:
+            return None
+
+    total = sum(values)
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    return total, idle
+
+
+def _read_meminfo() -> dict[str, int]:
+    meminfo: dict[str, int] = {}
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as file:
+            for line in file:
+                key, _, raw_value = line.partition(":")
+                if not key:
+                    continue
+                number = raw_value.strip().split(" ", 1)[0]
+                try:
+                    meminfo[key] = int(number)
+                except ValueError:
+                    continue
+    except OSError:
+        return {}
+    return meminfo
+
+
+def _collect_host_metrics() -> dict:
+    try:
+        load_1m, load_5m, load_15m = os.getloadavg()
+    except OSError:
+        load_1m, load_5m, load_15m = 0.0, 0.0, 0.0
+
+    cpu_sample = _read_cpu_sample()
+    cpu_percent = None
+
+    with LIVE_METRICS_LOCK:
+        previous_sample = LIVE_METRICS_STATE["last_cpu_sample"]
+        previous_percent = LIVE_METRICS_STATE["last_cpu_percent"]
+        if cpu_sample is not None and previous_sample is not None:
+            total_delta = cpu_sample[0] - previous_sample[0]
+            idle_delta = cpu_sample[1] - previous_sample[1]
+            if total_delta > 0:
+                usage = 100.0 * (1.0 - (idle_delta / total_delta))
+                cpu_percent = max(0.0, min(100.0, usage))
+            else:
+                cpu_percent = previous_percent
+        elif previous_percent is not None:
+            cpu_percent = previous_percent
+
+        if cpu_sample is not None:
+            LIVE_METRICS_STATE["last_cpu_sample"] = cpu_sample
+        LIVE_METRICS_STATE["last_cpu_percent"] = cpu_percent
+
+    meminfo = _read_meminfo()
+    mem_total_bytes = _safe_int(meminfo.get("MemTotal")) * 1024
+    mem_available_bytes = _safe_int(meminfo.get("MemAvailable")) * 1024
+    mem_used_bytes = max(mem_total_bytes - mem_available_bytes, 0)
+    mem_used_percent = (
+        round((mem_used_bytes / mem_total_bytes) * 100, 2) if mem_total_bytes else None
+    )
+
+    disk_total_bytes = None
+    disk_free_bytes = None
+    disk_used_bytes = None
+    disk_used_percent = None
+    try:
+        disk_stat = os.statvfs("/")
+    except OSError:
+        pass
+    else:
+        disk_total_bytes = disk_stat.f_blocks * disk_stat.f_frsize
+        disk_free_bytes = disk_stat.f_bavail * disk_stat.f_frsize
+        disk_used_bytes = max(disk_total_bytes - disk_free_bytes, 0)
+        if disk_total_bytes > 0:
+            disk_used_percent = round((disk_used_bytes / disk_total_bytes) * 100, 2)
+
+    return {
+        "load_avg": {
+            "1m": round(load_1m, 2),
+            "5m": round(load_5m, 2),
+            "15m": round(load_15m, 2),
+        },
+        "cpu_percent": round(cpu_percent, 2) if cpu_percent is not None else None,
+        "memory": {
+            "total_bytes": mem_total_bytes,
+            "used_bytes": mem_used_bytes,
+            "available_bytes": mem_available_bytes,
+            "used_percent": mem_used_percent,
+        },
+        "disk_root": {
+            "total_bytes": disk_total_bytes,
+            "used_bytes": disk_used_bytes,
+            "free_bytes": disk_free_bytes,
+            "used_percent": disk_used_percent,
+        },
+    }
+
+
+def _collect_vpn_live_metrics(now_epoch: int) -> dict:
+    vpn_metrics = {
+        "auto_provisioning_enabled": is_vpn_auto_provisioning_enabled(),
+        "stats_enabled": False,
+        "clients_total": 0,
+        "clients_with_stats": 0,
+        "traffic_total_bytes": 0,
+        "traffic_uplink_bytes": 0,
+        "traffic_downlink_bytes": 0,
+        "online_clients_estimated": 0,
+        "throughput_bps": 0.0,
+        "estimation_ready": False,
+        "throughput_history": [],
+        "online_history": [],
+    }
+
+    if not vpn_metrics["auto_provisioning_enabled"]:
+        with LIVE_METRICS_LOCK:
+            vpn_metrics["throughput_history"] = list(LIVE_METRICS_STATE["throughput_history"])
+            vpn_metrics["online_history"] = list(LIVE_METRICS_STATE["online_history"])
+        return vpn_metrics
+
+    now_monotonic = time.monotonic()
+    with LIVE_METRICS_LOCK:
+        cached_vpn_metrics = LIVE_METRICS_STATE.get("vpn_cached_metrics")
+        backoff_until = float(LIVE_METRICS_STATE.get("vpn_backoff_until", 0.0))
+        if cached_vpn_metrics and now_monotonic < backoff_until:
+            cached_payload = dict(cached_vpn_metrics)
+            cached_payload["stale"] = True
+            cached_payload["warning"] = "VPN временно недоступен, показаны последние данные."
+            cached_payload["throughput_history"] = list(
+                LIVE_METRICS_STATE["throughput_history"]
+            )
+            cached_payload["online_history"] = list(LIVE_METRICS_STATE["online_history"])
+            return cached_payload
+
+    try:
+        server_payload = list_server_vless_clients(
+            timeout_seconds=ADMIN_VPN_LIST_TIMEOUT_SECONDS,
+            retry_attempts=ADMIN_VPN_LIST_RETRY_ATTEMPTS,
+            retry_backoff_seconds=0.0,
+        )
+    except VpnProvisioningError as error:
+        with LIVE_METRICS_LOCK:
+            cached_vpn_metrics = LIVE_METRICS_STATE.get("vpn_cached_metrics")
+            LIVE_METRICS_STATE["vpn_backoff_until"] = (
+                now_monotonic + ADMIN_VPN_FAILURE_BACKOFF_SECONDS
+            )
+            if cached_vpn_metrics:
+                cached_payload = dict(cached_vpn_metrics)
+                cached_payload["stale"] = True
+                cached_payload["warning"] = (
+                    "VPN временно недоступен, показаны последние данные."
+                )
+                cached_payload["throughput_history"] = list(
+                    LIVE_METRICS_STATE["throughput_history"]
+                )
+                cached_payload["online_history"] = list(
+                    LIVE_METRICS_STATE["online_history"]
+                )
+                return cached_payload
+
+            vpn_metrics["error"] = str(error)
+            vpn_metrics["throughput_history"] = list(
+                LIVE_METRICS_STATE["throughput_history"]
+            )
+            vpn_metrics["online_history"] = list(LIVE_METRICS_STATE["online_history"])
+        return vpn_metrics
+
+    clients = server_payload.get("clients", [])
+    vpn_metrics["stats_enabled"] = bool(server_payload.get("stats_enabled"))
+    vpn_metrics["clients_total"] = len(clients)
+    vpn_metrics["inbound_tag"] = server_payload.get("inbound_tag")
+
+    clients_totals: dict[str, int] = {}
+
+    for client in clients:
+        stats = client.get("stats") or {}
+        if not stats.get("available"):
+            continue
+
+        total_bytes = _safe_int(stats.get("total_bytes"))
+        uplink_bytes = _safe_int(stats.get("uplink_bytes"))
+        downlink_bytes = _safe_int(stats.get("downlink_bytes"))
+        vpn_metrics["clients_with_stats"] += 1
+        vpn_metrics["traffic_total_bytes"] += total_bytes
+        vpn_metrics["traffic_uplink_bytes"] += uplink_bytes
+        vpn_metrics["traffic_downlink_bytes"] += downlink_bytes
+
+        identity = client.get("uuid") or client.get("email")
+        if identity:
+            clients_totals[str(identity)] = total_bytes
+
+    with LIVE_METRICS_LOCK:
+        previous_totals = LIVE_METRICS_STATE["last_clients_totals"]
+        previous_ts = LIVE_METRICS_STATE["last_clients_ts"]
+
+        delta_seconds = (
+            now_monotonic - previous_ts
+            if isinstance(previous_ts, (int, float))
+            else 0.0
+        )
+        delta_total = 0
+        online_estimated = 0
+
+        if delta_seconds > 0 and previous_totals and clients_totals:
+            for identity, current_total in clients_totals.items():
+                previous_total = previous_totals.get(identity)
+                if previous_total is None:
+                    continue
+                growth = current_total - previous_total
+                if growth > 0:
+                    delta_total += growth
+                    online_estimated += 1
+            vpn_metrics["estimation_ready"] = True
+        else:
+            vpn_metrics["estimation_ready"] = False
+
+        throughput_bps = (delta_total / delta_seconds) if delta_seconds > 0 else 0.0
+        vpn_metrics["throughput_bps"] = round(throughput_bps, 2)
+        vpn_metrics["online_clients_estimated"] = online_estimated
+
+        LIVE_METRICS_STATE["last_clients_totals"] = clients_totals
+        LIVE_METRICS_STATE["last_clients_ts"] = now_monotonic
+        LIVE_METRICS_STATE["throughput_history"].append(
+            {"ts": now_epoch, "value": vpn_metrics["throughput_bps"]}
+        )
+        LIVE_METRICS_STATE["online_history"].append(
+            {"ts": now_epoch, "value": vpn_metrics["online_clients_estimated"]}
+        )
+        LIVE_METRICS_STATE["vpn_cached_metrics"] = dict(vpn_metrics)
+        LIVE_METRICS_STATE["vpn_backoff_until"] = 0.0
+
+        vpn_metrics["throughput_history"] = list(LIVE_METRICS_STATE["throughput_history"])
+        vpn_metrics["online_history"] = list(LIVE_METRICS_STATE["online_history"])
+
+    return vpn_metrics
+
+
+def _build_admin_live_dashboard_payload() -> dict:
+    processed_statuses = ("approved", "paid")
+    now = utc_now()
+    stats = {
+        "users_total": User.query.count(),
+        "admins_total": User.query.filter_by(is_admin=True).count(),
+        "subscriptions_total": Subscription.query.count(),
+        "subscriptions_active": Subscription.query.filter_by(status="active").count(),
+        "invoices_total": Invoice.query.count(),
+        "invoices_approved": Invoice.query.filter(
+            Invoice.status.in_(processed_statuses)
+        ).count(),
+        "invoices_paid": Invoice.query.filter_by(status="paid").count(),
+        "requests_pending": Invoice.query.filter_by(
+            type=SUBSCRIPTION_REQUEST_TYPE, status="pending"
+        ).count(),
+        "devices_total": Device.query.count(),
+        "devices_ready": Device.query.filter_by(provisioning_state="ready").count(),
+    }
+
+    now_epoch = int(now.timestamp())
+    return {
+        "timestamp": serialize_datetime(now),
+        "stats": stats,
+        "host": _collect_host_metrics(),
+        "vpn": _collect_vpn_live_metrics(now_epoch),
+    }
 
 
 def json_success(data=None, status: int = 200, message: str | None = None):
@@ -204,7 +514,6 @@ def serialize_user(user: User, include_relations: bool = False) -> dict:
         "is_admin": user.is_admin,
         "is_email_verified": user_email_is_verified(user),
         "email_verified_at": serialize_datetime(user.email_verified_at),
-        "email_verification_sent_at": serialize_datetime(user.email_verification_sent_at),
         "created_at": serialize_datetime(user.created_at),
         "last_login_at": serialize_datetime(user.last_login_at),
         "updated_at": serialize_datetime(user.updated_at),
@@ -239,13 +548,13 @@ def api_index():
                 "/api/auth/login",
                 "/api/auth/logout",
                 "/api/auth/me",
-                "/api/auth/resend-verification",
                 "/api/invoices",
                 "/api/subscriptions/current",
                 "/api/subscriptions/request",
                 "/api/devices",
                 "/api/devices/<device_id>/revoke",
                 "/api/admin/overview",
+                "/api/admin/live-dashboard",
                 "/api/admin/users",
                 "/api/admin/users/<user_id>/verify-email",
                 "/api/admin/users/<user_id>/delete",
@@ -291,33 +600,6 @@ def api_csrf_token():
     return json_success(
         {"csrf_token": generate_csrf()},
         message="CSRF token issued.",
-    )
-
-
-@api_bp.post("/auth/resend-verification")
-@api_login_required
-def api_resend_verification():
-    if not is_email_verification_enabled():
-        return json_error("Подтверждение email отключено.", 400)
-
-    if user_email_is_verified(current_user):
-        return json_success(
-            {"is_email_verified": True},
-            message="Email уже подтвержден.",
-        )
-
-    try:
-        result = send_email_verification_message(current_user, ignore_cooldown=False)
-    except EmailVerificationError as error:
-        return json_error(str(error), 429)
-
-    return json_success(
-        {
-            "is_email_verified": False,
-            "delivered": bool(result["delivered"]),
-            "delivery": result["delivery"],
-        },
-        message="Письмо подтверждения отправлено.",
     )
 
 
@@ -527,7 +809,11 @@ def api_admin_overview():
 
     if is_vpn_auto_provisioning_enabled():
         try:
-            server_payload = list_server_vless_clients()
+            server_payload = list_server_vless_clients(
+                timeout_seconds=ADMIN_VPN_LIST_TIMEOUT_SECONDS,
+                retry_attempts=ADMIN_VPN_LIST_RETRY_ATTEMPTS,
+                retry_backoff_seconds=0.0,
+            )
         except VpnProvisioningError as error:
             vpn_summary["error"] = str(error)
         else:
@@ -536,6 +822,26 @@ def api_admin_overview():
             vpn_summary["inbound_tag"] = server_payload["inbound_tag"]
 
     return json_success({"stats": stats, "vpn": vpn_summary})
+
+
+@api_bp.get("/admin/live-dashboard")
+@api_admin_required
+def api_admin_live_dashboard():
+    now_monotonic = time.monotonic()
+    with LIVE_METRICS_LOCK:
+        if (
+            LIVE_METRICS_STATE["cached_payload"] is not None
+            and now_monotonic < LIVE_METRICS_STATE["cache_until"]
+        ):
+            return json_success(LIVE_METRICS_STATE["cached_payload"])
+
+    payload = _build_admin_live_dashboard_payload()
+
+    with LIVE_METRICS_LOCK:
+        LIVE_METRICS_STATE["cached_payload"] = payload
+        LIVE_METRICS_STATE["cache_until"] = time.monotonic() + LIVE_METRICS_CACHE_SECONDS
+
+    return json_success(payload)
 
 
 @api_bp.get("/admin/users")
@@ -598,7 +904,11 @@ def api_admin_server_vless_clients():
     if not is_vpn_auto_provisioning_enabled():
         return json_error("VPN SSH-интеграция не настроена.", 503)
 
-    server_payload = list_server_vless_clients()
+    server_payload = list_server_vless_clients(
+        timeout_seconds=ADMIN_VPN_LIST_TIMEOUT_SECONDS,
+        retry_attempts=ADMIN_VPN_LIST_RETRY_ATTEMPTS,
+        retry_backoff_seconds=0.0,
+    )
     uuids = [client.get("uuid") for client in server_payload["clients"] if client.get("uuid")]
     device_by_uuid = {}
     if uuids:

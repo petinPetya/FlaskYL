@@ -35,15 +35,4 @@ export VPN_REMOTE_UPDATE_EMAIL_SCRIPT='/usr/local/sbin/xray-update-client-email'
 # Email verification (опционально)
 export EMAIL_VERIFICATION_ENABLED='1'
 export EMAIL_VERIFICATION_REQUIRED='0'
-export EMAIL_VERIFICATION_TOKEN_TTL_SECONDS='86400'
-export EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS='60'
-export PUBLIC_APP_URL='http://127.0.0.1:5000'
-
-# SMTP для отправки подтверждений (если SMTP_HOST пустой, ссылка уходит в лог)
-export SMTP_HOST=''
-export SMTP_PORT='587'
-export SMTP_USERNAME=''
-export SMTP_PASSWORD=''
-export SMTP_FROM=''
-export SMTP_USE_TLS='1'
-export SMTP_USE_SSL='0'
+# Подтверждение выполняется вручную администратором (SMTP не используется).

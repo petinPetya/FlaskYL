@@ -366,6 +366,45 @@ body {
     word-break: break-all;
 }
 
+.live-ops-card {
+    background:
+        linear-gradient(
+            135deg,
+            rgba(216, 235, 221, 0.82),
+            rgba(255, 255, 255, 0.94)
+        ),
+        var(--app-surface-strong);
+}
+
+.live-metric-tile {
+    height: 100%;
+    padding: 0.95rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(22, 33, 31, 0.08);
+    background: rgba(255, 255, 255, 0.78);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.live-metric-value {
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+
+.live-chart-shell {
+    height: 100%;
+    padding: 0.95rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(22, 33, 31, 0.08);
+    background: rgba(255, 255, 255, 0.78);
+}
+
+.live-chart-canvas {
+    width: 100%;
+    height: 180px;
+    display: block;
+}
+
 @media (max-width: 991.98px) {
     .app-navbar .navbar-collapse {
         padding-top: 1rem;
@@ -383,5 +422,9 @@ body {
     .dashboard-card,
     .cta-card {
         padding: 1.3rem;
+    }
+
+    .live-metric-value {
+        font-size: 1.15rem;
     }
 }

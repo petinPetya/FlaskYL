@@ -63,23 +63,6 @@ class Config:
     )
     EMAIL_VERIFICATION_ENABLED = get_env_bool("EMAIL_VERIFICATION_ENABLED", True)
     EMAIL_VERIFICATION_REQUIRED = get_env_bool("EMAIL_VERIFICATION_REQUIRED", False)
-    EMAIL_VERIFICATION_TOKEN_TTL_SECONDS = get_env_int(
-        "EMAIL_VERIFICATION_TOKEN_TTL_SECONDS", 86400
-    )
-    EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = get_env_int(
-        "EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS", 60
-    )
-    EMAIL_VERIFICATION_SALT = os.environ.get(
-        "EMAIL_VERIFICATION_SALT", "email-verification"
-    ).strip()
-    PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "").strip()
-    SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
-    SMTP_PORT = get_env_int("SMTP_PORT", 587)
-    SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "").strip()
-    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-    SMTP_FROM = os.environ.get("SMTP_FROM", "").strip()
-    SMTP_USE_TLS = get_env_bool("SMTP_USE_TLS", True)
-    SMTP_USE_SSL = get_env_bool("SMTP_USE_SSL", False)
     VPN_AUTO_PROVISION = get_env_bool("VPN_AUTO_PROVISION", True)
     VPN_SSH_HOST = os.environ.get("VPN_SSH_HOST", "").strip()
     VPN_SSH_PORT = get_env_int("VPN_SSH_PORT", 22)
