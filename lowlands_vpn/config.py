@@ -42,7 +42,9 @@ def normalize_database_uri(database_uri: str | None) -> str:
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production")
-    SQLALCHEMY_DATABASE_URI = normalize_database_uri(os.environ.get("DATABASE_URL"))
+    SQLALCHEMY_DATABASE_URI = normalize_database_uri(
+        os.environ.get("DATABASE_URL")
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
     TESTING = False
@@ -61,14 +63,20 @@ class Config:
         "BOOTSTRAP_SCHEMA_ON_STARTUP",
         SQLALCHEMY_DATABASE_URI.startswith("sqlite:///"),
     )
-    EMAIL_VERIFICATION_ENABLED = get_env_bool("EMAIL_VERIFICATION_ENABLED", True)
-    EMAIL_VERIFICATION_REQUIRED = get_env_bool("EMAIL_VERIFICATION_REQUIRED", False)
+    EMAIL_VERIFICATION_ENABLED = get_env_bool(
+        "EMAIL_VERIFICATION_ENABLED", True
+    )
+    EMAIL_VERIFICATION_REQUIRED = get_env_bool(
+        "EMAIL_VERIFICATION_REQUIRED", False
+    )
     VPN_AUTO_PROVISION = get_env_bool("VPN_AUTO_PROVISION", True)
     VPN_SSH_HOST = os.environ.get("VPN_SSH_HOST", "").strip()
     VPN_SSH_PORT = get_env_int("VPN_SSH_PORT", 22)
     VPN_SSH_USER = os.environ.get("VPN_SSH_USER", "").strip()
     VPN_SSH_KEY_PATH = os.environ.get("VPN_SSH_KEY_PATH", "").strip()
-    VPN_SSH_CONFIG_FILE = os.environ.get("VPN_SSH_CONFIG_FILE", "/dev/null").strip()
+    VPN_SSH_CONFIG_FILE = os.environ.get(
+        "VPN_SSH_CONFIG_FILE", "/dev/null"
+    ).strip()
     VPN_SSH_CONNECT_TIMEOUT = get_env_int("VPN_SSH_CONNECT_TIMEOUT", 10)
     VPN_SSH_COMMAND_TIMEOUT = get_env_float("VPN_SSH_COMMAND_TIMEOUT", 20.0)
     VPN_SSH_COMMAND_RETRIES = get_env_int("VPN_SSH_COMMAND_RETRIES", 1)
@@ -91,7 +99,8 @@ class Config:
         "VPN_REMOTE_LIST_SCRIPT", "/usr/local/sbin/xray-list-clients"
     ).strip()
     VPN_REMOTE_UPDATE_EMAIL_SCRIPT = os.environ.get(
-        "VPN_REMOTE_UPDATE_EMAIL_SCRIPT", "/usr/local/sbin/xray-update-client-email"
+        "VPN_REMOTE_UPDATE_EMAIL_SCRIPT",
+        "/usr/local/sbin/xray-update-client-email",
     ).strip()
     VLESS_HOST = os.environ.get("VLESS_HOST", "").strip()
     VLESS_PORT = get_env_int("VLESS_PORT", 443)

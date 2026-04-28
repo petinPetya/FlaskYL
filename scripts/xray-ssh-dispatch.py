@@ -41,9 +41,7 @@ ALLOWED_COMMANDS = {
     },
 }
 
-ALIASES = {
-    os.path.basename(command): command for command in ALLOWED_COMMANDS
-}
+ALIASES = {os.path.basename(command): command for command in ALLOWED_COMMANDS}
 
 
 def fail(message: str, exit_code: int = 126) -> None:

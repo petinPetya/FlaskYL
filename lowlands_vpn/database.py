@@ -9,23 +9,38 @@ from lowlands_vpn.models import Tariff
 
 ADDITIVE_SCHEMA_PATCHES = {
     "users": {
-        "email_verified_at": "ALTER TABLE users ADD COLUMN email_verified_at DATETIME",
-        "email_verification_sent_at": "ALTER TABLE users ADD COLUMN email_verification_sent_at DATETIME",
+        "email_verified_at": (
+            "ALTER TABLE users ADD COLUMN email_verified_at DATETIME"
+        ),
+        "email_verification_sent_at": (
+            "ALTER TABLE users "
+            "ADD COLUMN email_verification_sent_at DATETIME"
+        ),
     },
     "tariffs": {
-        "device_limit": "ALTER TABLE tariffs ADD COLUMN device_limit INTEGER DEFAULT 1 NOT NULL",
+        "device_limit": (
+            "ALTER TABLE tariffs "
+            "ADD COLUMN device_limit INTEGER DEFAULT 1 NOT NULL"
+        ),
     },
     "devices": {
-        "assigned_ip": "ALTER TABLE devices ADD COLUMN assigned_ip VARCHAR(64)",
+        "assigned_ip": (
+            "ALTER TABLE devices ADD COLUMN assigned_ip VARCHAR(64)"
+        ),
         "last_error": "ALTER TABLE devices ADD COLUMN last_error VARCHAR(255)",
-        "provisioned_at": "ALTER TABLE devices ADD COLUMN provisioned_at DATETIME",
+        "provisioned_at": (
+            "ALTER TABLE devices ADD COLUMN provisioned_at DATETIME"
+        ),
         "revoked_at": "ALTER TABLE devices ADD COLUMN revoked_at DATETIME",
         "vpn_uuid": "ALTER TABLE devices ADD COLUMN vpn_uuid VARCHAR(64)",
         "vpn_email": "ALTER TABLE devices ADD COLUMN vpn_email VARCHAR(255)",
         "vpn_link": "ALTER TABLE devices ADD COLUMN vpn_link TEXT",
     },
     "subscriptions": {
-        "is_lifetime": "ALTER TABLE subscriptions ADD COLUMN is_lifetime BOOLEAN DEFAULT FALSE NOT NULL",
+        "is_lifetime": (
+            "ALTER TABLE subscriptions "
+            "ADD COLUMN is_lifetime BOOLEAN DEFAULT FALSE NOT NULL"
+        ),
     },
 }
 
@@ -43,14 +58,21 @@ def init_database(instance_path: str) -> None:
         return
 
     current_app.logger.warning(
-        "Схема базы данных не инициализирована. Выполни `alembic upgrade head` перед запуском приложения."
+        "Схема базы данных не инициализирована. "
+        "Выполни `alembic upgrade head` перед запуском приложения."
     )
 
 
 def schema_exists() -> bool:
     inspector = inspect(db.engine)
     existing_tables = set(inspector.get_table_names())
-    required_tables = {"users", "tariffs", "subscriptions", "invoices", "devices"}
+    required_tables = {
+        "users",
+        "tariffs",
+        "subscriptions",
+        "invoices",
+        "devices",
+    }
     return required_tables.issubset(existing_tables)
 
 

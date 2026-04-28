@@ -59,7 +59,9 @@ class RegisterForm(FlaskForm):
         "Пароль",
         validators=[
             DataRequired(message="Введите пароль."),
-            Length(min=8, message="Пароль должен содержать минимум 8 символов."),
+            Length(
+                min=8, message="Пароль должен содержать минимум 8 символов."
+            ),
         ],
     )
     confirm_password = PasswordField(
@@ -132,7 +134,9 @@ class BalanceAdjustmentForm(FlaskForm):
 
 
 class SubscriptionRequestForm(FlaskForm):
-    tariff_id = HiddenField(validators=[DataRequired(message="Выберите тариф.")])
+    tariff_id = HiddenField(
+        validators=[DataRequired(message="Выберите тариф.")]
+    )
     submit = SubmitField("Оставить запрос")
 
 

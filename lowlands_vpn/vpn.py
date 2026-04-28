@@ -60,7 +60,8 @@ def _build_vless_link_locally(device) -> str:
     name = quote(get_device_link_name(device), safe="")
     return (
         f"vless://{quote(device.vpn_uuid, safe='')}@"
-        f"{current_app.config['VLESS_HOST']}:{current_app.config['VLESS_PORT']}"
+        f"{current_app.config['VLESS_HOST']}:"
+        f"{current_app.config['VLESS_PORT']}"
         f"?type={quote(current_app.config['VLESS_TYPE'], safe='')}"
         f"&security={quote(current_app.config['VLESS_SECURITY'], safe='')}"
         f"&pbk={quote(current_app.config['VLESS_PBK'], safe='')}"
@@ -98,7 +99,9 @@ def build_vless_link(device) -> str:
     if can_build_vless_link_locally():
         return _build_vless_link_locally(device)
 
-    raise VpnProvisioningError("Не удалось собрать VLESS-ссылку для устройства.")
+    raise VpnProvisioningError(
+        "Не удалось собрать VLESS-ссылку для устройства."
+    )
 
 
 def provision_device(device) -> None:
@@ -167,7 +170,9 @@ def update_server_vless_client_email(
         raise VpnProvisioningError("Автопровижининг VPN не настроен.")
 
     if not client_uuid:
-        raise VpnProvisioningError("Не передан UUID клиента для обновления email.")
+        raise VpnProvisioningError(
+            "Не передан UUID клиента для обновления email."
+        )
 
     normalized_email = (new_email or "").strip()
     if not normalized_email:
@@ -253,7 +258,8 @@ def run_remote_command(
         )
 
     ssh_command.append(
-        f"{current_app.config['VPN_SSH_USER']}@{current_app.config['VPN_SSH_HOST']}"
+        f"{current_app.config['VPN_SSH_USER']}@"
+        f"{current_app.config['VPN_SSH_HOST']}"
     )
     remote_command = " ".join(
         shlex.quote(part) for part in (script_path, *script_args) if part
@@ -296,7 +302,8 @@ def run_remote_command(
                     timeout=command_timeout,
                 )
             except TypeError:
-                # Test doubles can monkeypatch subprocess.run without timeout kwarg.
+                # Test doubles can monkeypatch subprocess.run without timeout
+                # kwarg.
                 completed_process = subprocess.run(
                     [*ssh_command, remote_command],
                     capture_output=True,
@@ -305,14 +312,18 @@ def run_remote_command(
                 )
         except subprocess.TimeoutExpired as error:
             last_error = VpnProvisioningError(
-                f"VPN SSH command timed out after {command_timeout:.1f}s: {script_path}"
+                f"VPN SSH command timed out after {command_timeout:.1f}s: {
+                    script_path
+                }"
             )
             if attempt < max_attempts:
                 _sleep_before_retry(attempt, retry_backoff)
                 continue
             raise last_error from error
         except OSError as error:
-            last_error = VpnProvisioningError(f"VPN SSH command failed to start: {error}")
+            last_error = VpnProvisioningError(
+                f"VPN SSH command failed to start: {error}"
+            )
             if attempt < max_attempts and _is_retryable_ssh_error(str(error)):
                 _sleep_before_retry(attempt, retry_backoff)
                 continue
@@ -322,7 +333,8 @@ def run_remote_command(
             return completed_process
 
         error_output = (
-            completed_process.stderr.strip() or completed_process.stdout.strip()
+            completed_process.stderr.strip()
+            or completed_process.stdout.strip()
         )
         last_error = VpnProvisioningError(
             error_output

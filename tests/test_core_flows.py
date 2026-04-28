@@ -2,7 +2,14 @@ import json
 from datetime import timedelta
 
 from lowlands_vpn.extensions import db
-from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
+from lowlands_vpn.models import (
+    Device,
+    Invoice,
+    Subscription,
+    Tariff,
+    User,
+    utc_now,
+)
 
 
 def register_user(client, email: str, password: str = "strong-pass-123"):
@@ -73,9 +80,13 @@ def enable_vpn_ssh_config(app):
             "VPN_SSH_STRICT_HOST_KEY_CHECKING": True,
             "VPN_REMOTE_ADD_SCRIPT": "/usr/local/sbin/xray-add-client",
             "VPN_REMOTE_REMOVE_SCRIPT": "/usr/local/sbin/xray-remove-client",
-            "VPN_REMOTE_BUILD_LINK_SCRIPT": "/usr/local/sbin/xray-build-vless-link",
+            "VPN_REMOTE_BUILD_LINK_SCRIPT": (
+                "/usr/local/sbin/xray-build-vless-link"
+            ),
             "VPN_REMOTE_LIST_SCRIPT": "/usr/local/sbin/xray-list-clients",
-            "VPN_REMOTE_UPDATE_EMAIL_SCRIPT": "/usr/local/sbin/xray-update-client-email",
+            "VPN_REMOTE_UPDATE_EMAIL_SCRIPT": (
+                "/usr/local/sbin/xray-update-client-email"
+            ),
             "VLESS_HOST": "",
             "VLESS_PBK": "",
             "VLESS_SNI": "",
@@ -90,7 +101,9 @@ def test_registration_creates_account_without_subscription(app, client):
     assert response.status_code == 200
     assert "можно выбрать тариф" in response.get_data(as_text=True)
 
-    user = db.session.scalar(db.select(User).where(User.email == "first@example.com"))
+    user = db.session.scalar(
+        db.select(User).where(User.email == "first@example.com")
+    )
     assert user is not None
     assert user.is_admin is False
     assert Subscription.query.count() == 0
@@ -151,7 +164,9 @@ def test_request_id_header_is_echoed_for_traceability(app, client):
 
 def test_user_can_create_pending_subscription_request(app, client):
     register_user(client, "client@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
 
     response = client.post(
         "/subscriptions/request",
@@ -176,10 +191,14 @@ def test_email_verification_link_route_is_disabled(app, client):
     assert response.status_code == 404
 
 
-def test_email_verification_can_be_required_for_subscription_actions(app, client):
+def test_email_verification_can_be_required_for_subscription_actions(
+    app, client
+):
     app.config["EMAIL_VERIFICATION_REQUIRED"] = True
     register_user(client, "verify-guard@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
 
     blocked_response = client.post(
         "/subscriptions/request",
@@ -209,7 +228,9 @@ def test_email_verification_can_be_required_for_subscription_actions(app, client
 
 def test_email_verification_resend_route_is_disabled(app, client):
     register_user(client, "resend@example.com")
-    response = client.post("/email-verification/resend", data={}, follow_redirects=True)
+    response = client.post(
+        "/email-verification/resend", data={}, follow_redirects=True
+    )
     assert response.status_code == 404
 
 
@@ -219,7 +240,9 @@ def test_admin_can_approve_subscription_request(app, client):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    family = db.session.scalar(db.select(Tariff).where(Tariff.name == "Family"))
+    family = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Family")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": family.id},
@@ -240,7 +263,9 @@ def test_admin_can_approve_subscription_request(app, client):
 
     approved_invoice = db.session.get(Invoice, invoice.id)
     subscription = db.session.scalar(
-        db.select(Subscription).where(Subscription.user_id == approved_invoice.user_id)
+        db.select(Subscription).where(
+            Subscription.user_id == approved_invoice.user_id
+        )
     )
     assert approved_invoice.status == "approved"
     assert subscription is not None
@@ -265,7 +290,9 @@ def test_admin_user_pages_render(app, client):
     grant_admin("admin@example.com")
     logout_user(client)
     register_user(client, "user@example.com")
-    user = db.session.scalar(db.select(User).where(User.email == "user@example.com"))
+    user = db.session.scalar(
+        db.select(User).where(User.email == "user@example.com")
+    )
     logout_user(client)
 
     login_user(client, "admin@example.com")
@@ -283,7 +310,9 @@ def test_admin_can_toggle_user_role_active_and_balance(app, client):
     grant_admin("admin@example.com")
     logout_user(client)
     register_user(client, "user@example.com")
-    user = db.session.scalar(db.select(User).where(User.email == "user@example.com"))
+    user = db.session.scalar(
+        db.select(User).where(User.email == "user@example.com")
+    )
     logout_user(client)
 
     login_user(client, "admin@example.com")
@@ -311,13 +340,19 @@ def test_admin_can_toggle_user_role_active_and_balance(app, client):
     updated_user = db.session.get(User, user.id)
 
     assert role_response.status_code == 200
-    assert "Роль пользователя обновлена." in role_response.get_data(as_text=True)
+    assert "Роль пользователя обновлена." in role_response.get_data(
+        as_text=True
+    )
     assert status_response.status_code == 200
-    assert "Статус пользователя обновлен." in status_response.get_data(as_text=True)
+    assert "Статус пользователя обновлен." in status_response.get_data(
+        as_text=True
+    )
     assert deposit_response.status_code == 200
     assert "Баланс пополнен." in deposit_response.get_data(as_text=True)
     assert charge_response.status_code == 200
-    assert "Средства списаны с баланса." in charge_response.get_data(as_text=True)
+    assert "Средства списаны с баланса." in charge_response.get_data(
+        as_text=True
+    )
     assert updated_user.is_admin is True
     assert updated_user.is_active is False
     assert updated_user.balance == 37500
@@ -328,8 +363,12 @@ def test_admin_can_delete_user_account_completely(app, client):
     grant_admin("admin@example.com")
     logout_user(client)
     register_user(client, "remove-me@example.com")
-    user = db.session.scalar(db.select(User).where(User.email == "remove-me@example.com"))
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    user = db.session.scalar(
+        db.select(User).where(User.email == "remove-me@example.com")
+    )
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     assert user is not None
     subscription = Subscription(
         user_id=user.id,
@@ -372,12 +411,16 @@ def test_admin_can_delete_user_account_completely(app, client):
     )
 
     assert response.status_code == 200
-    assert "Пользователь удален безвозвратно." in response.get_data(as_text=True)
+    assert "Пользователь удален безвозвратно." in response.get_data(
+        as_text=True
+    )
     assert db.session.get(User, user.id) is None
     assert Subscription.query.filter_by(user_id=user.id).count() == 0
     assert Invoice.query.filter_by(user_id=user.id).count() == 0
     remaining_devices = (
-        Device.query.join(Subscription).filter(Subscription.user_id == user.id).count()
+        Device.query.join(Subscription)
+        .filter(Subscription.user_id == user.id)
+        .count()
     )
     assert remaining_devices == 0
 
@@ -403,7 +446,9 @@ def test_admin_can_verify_user_email_manually(app, client):
 
     updated_user = db.session.get(User, user.id)
     assert response.status_code == 200
-    assert "Email пользователя подтвержден вручную." in response.get_data(as_text=True)
+    assert "Email пользователя подтвержден вручную." in response.get_data(
+        as_text=True
+    )
     assert updated_user is not None
     assert updated_user.is_email_verified is True
 
@@ -411,7 +456,9 @@ def test_admin_can_verify_user_email_manually(app, client):
 def test_admin_cannot_delete_own_account(app, client):
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    admin_user = db.session.scalar(db.select(User).where(User.email == "admin@example.com"))
+    admin_user = db.session.scalar(
+        db.select(User).where(User.email == "admin@example.com")
+    )
     assert admin_user is not None
 
     response = client.post(
@@ -421,8 +468,9 @@ def test_admin_cannot_delete_own_account(app, client):
     )
 
     assert response.status_code == 200
-    assert "Нельзя удалить собственный аккаунт администратора." in response.get_data(
-        as_text=True
+    assert (
+        "Нельзя удалить собственный аккаунт администратора."
+        in response.get_data(as_text=True)
     )
     assert db.session.get(User, admin_user.id) is not None
 
@@ -430,7 +478,9 @@ def test_admin_cannot_delete_own_account(app, client):
 def test_admin_subscription_is_lifetime_by_default(app, client):
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -459,7 +509,9 @@ def test_admin_can_delete_approved_subscription_request_note(app, client):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -469,7 +521,9 @@ def test_admin_can_delete_approved_subscription_request_note(app, client):
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     response = client.post(
         f"/admin/invoices/{invoice.id}/delete",
         data={},
@@ -482,7 +536,9 @@ def test_admin_can_delete_approved_subscription_request_note(app, client):
     deleted_invoice = db.session.get(Invoice, invoice.id)
 
     assert response.status_code == 200
-    assert "Запись о подтвержденной заявке удалена" in response.get_data(as_text=True)
+    assert "Запись о подтвержденной заявке удалена" in response.get_data(
+        as_text=True
+    )
     assert deleted_invoice is None
     assert subscription is not None
 
@@ -493,7 +549,9 @@ def test_admin_can_delete_revoked_subscription_note(app, client):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    family = db.session.scalar(db.select(Tariff).where(Tariff.name == "Family"))
+    family = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Family")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": family.id},
@@ -503,7 +561,9 @@ def test_admin_can_delete_revoked_subscription_note(app, client):
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
 
     subscription = db.session.scalar(
         db.select(Subscription).where(Subscription.user_id == invoice.user_id)
@@ -521,7 +581,9 @@ def test_admin_can_delete_revoked_subscription_note(app, client):
     updated_invoice = db.session.get(Invoice, invoice.id)
 
     assert response.status_code == 200
-    assert "Отозванная подписка удалена из истории" in response.get_data(as_text=True)
+    assert "Отозванная подписка удалена из истории" in response.get_data(
+        as_text=True
+    )
     assert deleted_subscription is None
     assert updated_invoice is not None
     assert updated_invoice.subscription_id is None
@@ -533,7 +595,9 @@ def test_admin_can_cancel_pending_subscription_request(app, client):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -556,13 +620,17 @@ def test_admin_can_cancel_pending_subscription_request(app, client):
     assert updated_invoice.status == "cancelled"
 
 
-def test_regular_user_subscription_expiry_cannot_be_managed_manually(app, client):
+def test_regular_user_subscription_expiry_cannot_be_managed_manually(
+    app, client
+):
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
     logout_user(client)
 
     register_user(client, "user@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -595,14 +663,18 @@ def test_regular_user_subscription_expiry_cannot_be_managed_manually(app, client
     updated_subscription = db.session.get(Subscription, subscription.id)
 
     assert response.status_code == 200
-    assert "только для подписок администратора" in response.get_data(as_text=True)
+    assert "только для подписок администратора" in response.get_data(
+        as_text=True
+    )
     assert updated_subscription.is_lifetime is False
 
 
 def test_admin_can_set_manual_expiration_for_admin_subscription(app, client):
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -634,13 +706,18 @@ def test_admin_can_set_manual_expiration_for_admin_subscription(app, client):
     assert response.status_code == 200
     assert "Срок подписки обновлён." in response.get_data(as_text=True)
     assert updated_subscription.is_lifetime is False
-    assert updated_subscription.expires_at.strftime("%Y-%m-%dT%H:%M") == future_value
+    assert (
+        updated_subscription.expires_at.strftime("%Y-%m-%dT%H:%M")
+        == future_value
+    )
 
 
 def test_dashboard_shows_lifetime_expiration_for_admin(app, client):
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -667,7 +744,9 @@ def test_device_limit_is_enforced_and_can_be_reused_after_revoke(app, client):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -677,7 +756,9 @@ def test_device_limit_is_enforced_and_can_be_reused_after_revoke(app, client):
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "user@example.com")
@@ -692,7 +773,9 @@ def test_device_limit_is_enforced_and_can_be_reused_after_revoke(app, client):
         follow_redirects=True,
     )
 
-    device = db.session.scalar(db.select(Device).where(Device.name == "Work Laptop"))
+    device = db.session.scalar(
+        db.select(Device).where(Device.name == "Work Laptop")
+    )
     revoke_response = client.post(
         f"/devices/{device.id}/revoke",
         data={},
@@ -716,7 +799,9 @@ def test_device_limit_is_enforced_and_can_be_reused_after_revoke(app, client):
 def test_admin_is_not_limited_by_tariff_device_cap(app, client):
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
 
     client.post(
         "/subscriptions/request",
@@ -755,7 +840,9 @@ def test_admin_can_update_device_provisioning_state(app, client):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    family = db.session.scalar(db.select(Tariff).where(Tariff.name == "Family"))
+    family = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Family")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": family.id},
@@ -765,7 +852,9 @@ def test_admin_can_update_device_provisioning_state(app, client):
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "user@example.com")
@@ -805,7 +894,9 @@ def test_admin_can_update_device_xray_email_without_replacing_link(
 
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -863,21 +954,28 @@ def test_admin_can_update_device_xray_email_without_replacing_link(
 
     updated_device = db.session.get(Device, device.id)
     assert response.status_code == 200
-    assert "Xray email обновлён без замены UUID и ссылки." in response.get_data(
-        as_text=True
+    assert (
+        "Xray email обновлён без замены UUID и ссылки."
+        in response.get_data(as_text=True)
     )
     assert updated_device.vpn_email == "new-mail@xray"
     assert updated_device.vpn_uuid == "managed-uuid-1"
     assert updated_device.vpn_link == "vless://managed-uuid-1@test:443"
-    assert any("xray-update-client-email" in command for command in recorded_commands)
+    assert any(
+        "xray-update-client-email" in command for command in recorded_commands
+    )
 
 
-def test_admin_device_xray_email_update_shows_remote_error(app, client, monkeypatch):
+def test_admin_device_xray_email_update_shows_remote_error(
+    app, client, monkeypatch
+):
     enable_vpn_ssh_config(app)
 
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -912,7 +1010,9 @@ def test_admin_device_xray_email_update_shows_remote_error(app, client, monkeypa
     def fake_run(command, capture_output, check, text):
         remote_command = command[-1]
         if "xray-update-client-email" in remote_command:
-            return FakeCompletedProcess(returncode=1, stderr="Email уже существует")
+            return FakeCompletedProcess(
+                returncode=1, stderr="Email уже существует"
+            )
         raise AssertionError(f"Unexpected command: {remote_command}")
 
     monkeypatch.setattr("lowlands_vpn.vpn.subprocess.run", fake_run)
@@ -980,7 +1080,9 @@ def test_admin_can_delete_server_vless_client_and_sync_local_device(
 
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -1046,12 +1148,16 @@ def test_admin_can_delete_server_vless_client_and_sync_local_device(
     assert updated_device.vpn_link is None
 
 
-def test_admin_can_import_orphan_server_clients_into_devices(app, client, monkeypatch):
+def test_admin_can_import_orphan_server_clients_into_devices(
+    app, client, monkeypatch
+):
     enable_vpn_ssh_config(app)
 
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -1124,7 +1230,9 @@ def test_admin_can_import_orphan_server_clients_into_devices(app, client, monkey
     assert imported_devices[0].vpn_link == "vless://orphan-uuid-1@test:443"
 
 
-def test_device_is_provisioned_via_vpn_server_when_configured(app, client, monkeypatch):
+def test_device_is_provisioned_via_vpn_server_when_configured(
+    app, client, monkeypatch
+):
     enable_vpn_ssh_config(app)
     recorded_commands = []
 
@@ -1138,7 +1246,11 @@ def test_device_is_provisioned_via_vpn_server_when_configured(app, client, monke
                         "status": "ok",
                         "uuid": "1430dff8-73ef-44bf-a9ce-09c3ef9b638b",
                         "email": "device-placeholder@xray",
-                        "link": "vless://1430dff8-73ef-44bf-a9ce-09c3ef9b638b@147.45.224.143:443?type=tcp#Work%20Laptop",
+                        "link": (
+                            "vless://1430dff8-73ef-44bf-a9ce-"
+                            "09c3ef9b638b@147.45.224.143:443"
+                            "?type=tcp#Work%20Laptop"
+                        ),
                     }
                 )
             )
@@ -1151,7 +1263,9 @@ def test_device_is_provisioned_via_vpn_server_when_configured(app, client, monke
     logout_user(client)
 
     register_user(client, "user@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -1161,7 +1275,9 @@ def test_device_is_provisioned_via_vpn_server_when_configured(app, client, monke
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "user@example.com")
@@ -1171,7 +1287,9 @@ def test_device_is_provisioned_via_vpn_server_when_configured(app, client, monke
         follow_redirects=True,
     )
 
-    device = db.session.scalar(db.select(Device).where(Device.name == "Work Laptop"))
+    device = db.session.scalar(
+        db.select(Device).where(Device.name == "Work Laptop")
+    )
     assert response.status_code == 200
     assert "VPN-ссылка готова" in response.get_data(as_text=True)
     assert device is not None
@@ -1180,7 +1298,9 @@ def test_device_is_provisioned_via_vpn_server_when_configured(app, client, monke
     assert device.vpn_uuid is not None
     assert device.vpn_email == f"device-{device.id}@xray"
     assert device.vpn_link.startswith("vless://")
-    assert not any("xray-build-vless-link" in command for command in recorded_commands)
+    assert not any(
+        "xray-build-vless-link" in command for command in recorded_commands
+    )
 
 
 def test_device_provision_failure_is_saved_on_device(app, client, monkeypatch):
@@ -1199,7 +1319,9 @@ def test_device_provision_failure_is_saved_on_device(app, client, monkeypatch):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -1209,7 +1331,9 @@ def test_device_provision_failure_is_saved_on_device(app, client, monkeypatch):
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "user@example.com")
@@ -1219,7 +1343,9 @@ def test_device_provision_failure_is_saved_on_device(app, client, monkeypatch):
         follow_redirects=True,
     )
 
-    device = db.session.scalar(db.select(Device).where(Device.name == "Broken Laptop"))
+    device = db.session.scalar(
+        db.select(Device).where(Device.name == "Broken Laptop")
+    )
     assert response.status_code == 200
     assert "выдача VPN завершилась ошибкой" in response.get_data(as_text=True)
     assert device is not None
@@ -1228,7 +1354,9 @@ def test_device_provision_failure_is_saved_on_device(app, client, monkeypatch):
     assert "ssh timeout" in device.last_error
 
 
-def test_device_provision_retries_transient_ssh_error_once(app, client, monkeypatch):
+def test_device_provision_retries_transient_ssh_error_once(
+    app, client, monkeypatch
+):
     enable_vpn_ssh_config(app)
     app.config.update(
         {
@@ -1243,9 +1371,13 @@ def test_device_provision_retries_transient_ssh_error_once(app, client, monkeypa
         if "xray-add-client" in remote_command:
             add_attempts["count"] += 1
             if add_attempts["count"] == 1:
-                return FakeCompletedProcess(returncode=255, stderr="Connection timed out")
+                return FakeCompletedProcess(
+                    returncode=255, stderr="Connection timed out"
+                )
             return FakeCompletedProcess(
-                stdout=json.dumps({"status": "ok", "link": "vless://retry-success"})
+                stdout=json.dumps(
+                    {"status": "ok", "link": "vless://retry-success"}
+                )
             )
         raise AssertionError(f"Unexpected command: {remote_command}")
 
@@ -1256,7 +1388,9 @@ def test_device_provision_retries_transient_ssh_error_once(app, client, monkeypa
     logout_user(client)
 
     register_user(client, "user@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -1266,7 +1400,9 @@ def test_device_provision_retries_transient_ssh_error_once(app, client, monkeypa
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "user@example.com")
@@ -1276,7 +1412,9 @@ def test_device_provision_retries_transient_ssh_error_once(app, client, monkeypa
         follow_redirects=True,
     )
 
-    device = db.session.scalar(db.select(Device).where(Device.name == "Retry Laptop"))
+    device = db.session.scalar(
+        db.select(Device).where(Device.name == "Retry Laptop")
+    )
     assert response.status_code == 200
     assert "VPN-ссылка готова" in response.get_data(as_text=True)
     assert add_attempts["count"] == 2
@@ -1294,7 +1432,9 @@ def test_user_revoke_calls_vpn_remove_script(app, client, monkeypatch):
         recorded_commands.append(remote_command)
         if "xray-add-client" in remote_command:
             return FakeCompletedProcess(
-                stdout=json.dumps({"status": "ok", "link": "vless://device-link"})
+                stdout=json.dumps(
+                    {"status": "ok", "link": "vless://device-link"}
+                )
             )
         if "xray-remove-client" in remote_command:
             return FakeCompletedProcess(
@@ -1309,7 +1449,9 @@ def test_user_revoke_calls_vpn_remove_script(app, client, monkeypatch):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -1319,7 +1461,9 @@ def test_user_revoke_calls_vpn_remove_script(app, client, monkeypatch):
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "user@example.com")
@@ -1339,7 +1483,9 @@ def test_user_revoke_calls_vpn_remove_script(app, client, monkeypatch):
     updated_device = db.session.get(Device, device.id)
     assert response.status_code == 200
     assert "Устройство отозвано" in response.get_data(as_text=True)
-    assert any("xray-remove-client" in command for command in recorded_commands)
+    assert any(
+        "xray-remove-client" in command for command in recorded_commands
+    )
     assert updated_device.status == "revoked"
     assert updated_device.provisioning_state == "revoked"
     assert updated_device.vpn_link is None
@@ -1351,7 +1497,9 @@ def test_admin_can_delete_single_revoked_device_record(app, client):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    family = db.session.scalar(db.select(Tariff).where(Tariff.name == "Family"))
+    family = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Family")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": family.id},
@@ -1361,7 +1509,9 @@ def test_admin_can_delete_single_revoked_device_record(app, client):
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "user@example.com")
@@ -1370,7 +1520,9 @@ def test_admin_can_delete_single_revoked_device_record(app, client):
         data={"name": "Old Phone", "platform": "android"},
         follow_redirects=True,
     )
-    device = db.session.scalar(db.select(Device).where(Device.name == "Old Phone"))
+    device = db.session.scalar(
+        db.select(Device).where(Device.name == "Old Phone")
+    )
     client.post(f"/devices/{device.id}/revoke", data={}, follow_redirects=True)
     logout_user(client)
 
@@ -1382,7 +1534,9 @@ def test_admin_can_delete_single_revoked_device_record(app, client):
     )
 
     assert response.status_code == 200
-    assert "Запись об отозванном устройстве удалена" in response.get_data(as_text=True)
+    assert "Запись об отозванном устройстве удалена" in response.get_data(
+        as_text=True
+    )
     assert db.session.get(Device, device.id) is None
 
 
@@ -1392,7 +1546,9 @@ def test_admin_can_delete_all_revoked_device_records(app, client):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    family = db.session.scalar(db.select(Tariff).where(Tariff.name == "Family"))
+    family = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Family")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": family.id},
@@ -1402,7 +1558,9 @@ def test_admin_can_delete_all_revoked_device_records(app, client):
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "user@example.com")
@@ -1422,14 +1580,22 @@ def test_admin_can_delete_all_revoked_device_records(app, client):
         follow_redirects=True,
     )
 
-    old_phone = db.session.scalar(db.select(Device).where(Device.name == "Old Phone"))
-    old_laptop = db.session.scalar(db.select(Device).where(Device.name == "Old Laptop"))
+    old_phone = db.session.scalar(
+        db.select(Device).where(Device.name == "Old Phone")
+    )
+    old_laptop = db.session.scalar(
+        db.select(Device).where(Device.name == "Old Laptop")
+    )
     current_tablet = db.session.scalar(
         db.select(Device).where(Device.name == "Current Tablet")
     )
 
-    client.post(f"/devices/{old_phone.id}/revoke", data={}, follow_redirects=True)
-    client.post(f"/devices/{old_laptop.id}/revoke", data={}, follow_redirects=True)
+    client.post(
+        f"/devices/{old_phone.id}/revoke", data={}, follow_redirects=True
+    )
+    client.post(
+        f"/devices/{old_laptop.id}/revoke", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "admin@example.com")
@@ -1447,7 +1613,9 @@ def test_admin_can_delete_all_revoked_device_records(app, client):
     )
 
     assert response.status_code == 200
-    assert "Удалено отозванных устройств: 2." in response.get_data(as_text=True)
+    assert "Удалено отозванных устройств: 2." in response.get_data(
+        as_text=True
+    )
     assert db.session.get(Device, old_phone.id) is None
     assert db.session.get(Device, old_laptop.id) is None
     assert db.session.get(Device, current_tablet.id) is not None
@@ -1462,7 +1630,9 @@ def test_admin_can_retry_device_provisioning(app, client, monkeypatch):
     logout_user(client)
 
     register_user(client, "user@example.com")
-    family = db.session.scalar(db.select(Tariff).where(Tariff.name == "Family"))
+    family = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Family")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": family.id},
@@ -1472,7 +1642,9 @@ def test_admin_can_retry_device_provisioning(app, client, monkeypatch):
     logout_user(client)
 
     login_user(client, "admin@example.com")
-    client.post(f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True)
+    client.post(
+        f"/admin/invoices/{invoice.id}/approve", data={}, follow_redirects=True
+    )
     logout_user(client)
 
     login_user(client, "user@example.com")
@@ -1481,7 +1653,9 @@ def test_admin_can_retry_device_provisioning(app, client, monkeypatch):
         data={"name": "Tablet", "platform": "android"},
         follow_redirects=True,
     )
-    device = db.session.scalar(db.select(Device).where(Device.name == "Tablet"))
+    device = db.session.scalar(
+        db.select(Device).where(Device.name == "Tablet")
+    )
     logout_user(client)
 
     enable_vpn_ssh_config(app)
@@ -1490,7 +1664,9 @@ def test_admin_can_retry_device_provisioning(app, client, monkeypatch):
         remote_command = command[-1]
         if "xray-add-client" in remote_command:
             return FakeCompletedProcess(
-                stdout=json.dumps({"status": "ok", "link": "vless://retry-link"})
+                stdout=json.dumps(
+                    {"status": "ok", "link": "vless://retry-link"}
+                )
             )
         raise AssertionError(f"Unexpected command: {remote_command}")
 
@@ -1519,7 +1695,9 @@ def test_admin_dashboard_auto_revokes_expired_subscription_devices(
 
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -1581,7 +1759,9 @@ def test_admin_dashboard_auto_revokes_expired_subscription_devices(
     assert updated_device.status == "revoked"
     assert updated_device.provisioning_state == "revoked"
     assert "истекла" in updated_device.last_error
-    assert any("xray-remove-client" in command for command in recorded_commands)
+    assert any(
+        "xray-remove-client" in command for command in recorded_commands
+    )
 
 
 def test_admin_sync_vpn_marks_missing_server_clients_as_failed(
@@ -1591,7 +1771,9 @@ def test_admin_sync_vpn_marks_missing_server_clients_as_failed(
 
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -1656,7 +1838,9 @@ def test_admin_sync_vpn_removes_stale_server_clients_for_revoked_devices(
 
     register_user(client, "admin@example.com")
     grant_admin("admin@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     client.post(
         "/subscriptions/request",
         data={"tariff_id": starter.id},
@@ -1731,7 +1915,9 @@ def test_admin_sync_vpn_removes_stale_server_clients_for_revoked_devices(
     assert response.status_code == 200
     assert "Очищено серверных хвостов: 1." in page
     assert updated_device.vpn_link is None
-    assert any("xray-remove-client" in command for command in recorded_commands)
+    assert any(
+        "xray-remove-client" in command for command in recorded_commands
+    )
 
 
 def test_api_public_tariffs_endpoint_returns_active_tariffs(app, client):
@@ -1803,9 +1989,15 @@ def test_api_login_me_and_logout_flow(app, client):
     unauthorized_after_logout = client.get("/api/auth/me")
 
     assert login_response.status_code == 200
-    assert login_response.get_json()["data"]["user"]["email"] == "api-auth@example.com"
+    assert (
+        login_response.get_json()["data"]["user"]["email"]
+        == "api-auth@example.com"
+    )
     assert me_response.status_code == 200
-    assert me_response.get_json()["data"]["user"]["email"] == "api-auth@example.com"
+    assert (
+        me_response.get_json()["data"]["user"]["email"]
+        == "api-auth@example.com"
+    )
     assert logout_response.status_code == 200
     assert logout_response.get_json()["message"] == "Сессия завершена."
     assert unauthorized_after_logout.status_code == 401
@@ -1814,7 +2006,9 @@ def test_api_login_me_and_logout_flow(app, client):
 def test_api_requires_verified_email_for_mutations_when_enabled(app, client):
     app.config["EMAIL_VERIFICATION_REQUIRED"] = True
     register_user(client, "api-verify@example.com")
-    starter = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    starter = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
 
     blocked_response = client.post(
         "/api/subscriptions/request",
@@ -1823,7 +2017,9 @@ def test_api_requires_verified_email_for_mutations_when_enabled(app, client):
     assert blocked_response.status_code == 403
     assert "Подтвердите email" in blocked_response.get_json()["error"]
 
-    user = db.session.scalar(db.select(User).where(User.email == "api-verify@example.com"))
+    user = db.session.scalar(
+        db.select(User).where(User.email == "api-verify@example.com")
+    )
     assert user is not None
     user.mark_email_verified()
     db.session.commit()
@@ -1838,7 +2034,9 @@ def test_api_requires_verified_email_for_mutations_when_enabled(app, client):
 
 def test_api_can_create_subscription_request_and_list_invoices(app, client):
     register_user(client, "api-billing@example.com")
-    tariff = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    tariff = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
 
     create_response = client.post(
         "/api/subscriptions/request",
@@ -1855,7 +2053,10 @@ def test_api_can_create_subscription_request_and_list_invoices(app, client):
     invoices_payload = invoices_response.get_json()
     assert invoices_response.status_code == 200
     assert len(invoices_payload["data"]["invoices"]) == 1
-    assert invoices_payload["data"]["invoices"][0]["type"] == "subscription_request"
+    assert (
+        invoices_payload["data"]["invoices"][0]["type"]
+        == "subscription_request"
+    )
 
 
 def test_api_can_create_and_revoke_device(app, client):
@@ -1863,7 +2064,9 @@ def test_api_can_create_and_revoke_device(app, client):
     user = db.session.scalar(
         db.select(User).where(User.email == "api-device@example.com")
     )
-    tariff = db.session.scalar(db.select(Tariff).where(Tariff.name == "Starter"))
+    tariff = db.session.scalar(
+        db.select(Tariff).where(Tariff.name == "Starter")
+    )
     subscription = Subscription(
         user_id=user.id,
         tariff_id=tariff.id,
@@ -1886,7 +2089,9 @@ def test_api_can_create_and_revoke_device(app, client):
     assert create_response.status_code == 201
     assert device_payload["data"]["device"]["name"] == "Phone API"
     assert device_payload["data"]["device"]["status"] == "pending"
-    assert device_payload["data"]["device"]["provisioning_state"] == "requested"
+    assert (
+        device_payload["data"]["device"]["provisioning_state"] == "requested"
+    )
 
     revoke_payload = revoke_response.get_json()
     assert revoke_response.status_code == 200
@@ -1946,7 +2151,9 @@ def test_admin_api_can_delete_user(app, client):
     grant_admin("api-admin@example.com")
     logout_user(client)
     register_user(client, "api-delete@example.com")
-    user = db.session.scalar(db.select(User).where(User.email == "api-delete@example.com"))
+    user = db.session.scalar(
+        db.select(User).where(User.email == "api-delete@example.com")
+    )
     assert user is not None
     logout_user(client)
     api_login(client, "api-admin@example.com")

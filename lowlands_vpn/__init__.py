@@ -52,7 +52,9 @@ def register_cli_commands(app: Flask) -> None:
         if not normalized:
             raise click.ClickException("Email не должен быть пустым.")
 
-        user = db.session.scalar(db.select(User).where(User.email == normalized))
+        user = db.session.scalar(
+            db.select(User).where(User.email == normalized)
+        )
         if user is None:
             raise click.ClickException(f"Пользователь не найден: {normalized}")
 
@@ -74,7 +76,8 @@ def configure_logging(app: Flask) -> None:
 
     if app.config["SECRET_KEY"] == "change-me-in-production":
         app.logger.warning(
-            "Используется стандартный SECRET_KEY. Задай SECRET_KEY через переменные окружения."
+            "Используется стандартный SECRET_KEY. "
+            "Задай SECRET_KEY через переменные окружения."
         )
 
 
@@ -96,7 +99,8 @@ def register_error_handlers(app: Flask) -> None:
         return (
             render_template(
                 "csrf_error.html",
-                error_message=error.description or "Недействительный CSRF-токен.",
+                error_message=error.description
+                or "Недействительный CSRF-токен.",
             ),
             400,
         )
@@ -105,8 +109,14 @@ def register_error_handlers(app: Flask) -> None:
 def register_request_hooks(app: Flask) -> None:
     @app.before_request
     def assign_request_id():
-        incoming_request_id = (request.headers.get("X-Request-ID") or "").strip()
-        request_id = incoming_request_id[:128] if incoming_request_id else uuid.uuid4().hex
+        incoming_request_id = (
+            request.headers.get("X-Request-ID") or ""
+        ).strip()
+        request_id = (
+            incoming_request_id[:128]
+            if incoming_request_id
+            else uuid.uuid4().hex
+        )
         g.request_id = request_id
 
     @app.after_request

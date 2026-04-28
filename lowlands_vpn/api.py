@@ -15,7 +15,14 @@ from lowlands_vpn.email_verification import (
     is_email_verification_required,
 )
 from lowlands_vpn.extensions import db
-from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
+from lowlands_vpn.models import (
+    Device,
+    Invoice,
+    Subscription,
+    Tariff,
+    User,
+    utc_now,
+)
 from lowlands_vpn.services import (
     SUBSCRIPTION_REQUEST_TYPE,
     create_subscription_request,
@@ -136,7 +143,9 @@ def _collect_host_metrics() -> dict:
     mem_available_bytes = _safe_int(meminfo.get("MemAvailable")) * 1024
     mem_used_bytes = max(mem_total_bytes - mem_available_bytes, 0)
     mem_used_percent = (
-        round((mem_used_bytes / mem_total_bytes) * 100, 2) if mem_total_bytes else None
+        round((mem_used_bytes / mem_total_bytes) * 100, 2)
+        if mem_total_bytes
+        else None
     )
 
     disk_total_bytes = None
@@ -152,7 +161,9 @@ def _collect_host_metrics() -> dict:
         disk_free_bytes = disk_stat.f_bavail * disk_stat.f_frsize
         disk_used_bytes = max(disk_total_bytes - disk_free_bytes, 0)
         if disk_total_bytes > 0:
-            disk_used_percent = round((disk_used_bytes / disk_total_bytes) * 100, 2)
+            disk_used_percent = round(
+                (disk_used_bytes / disk_total_bytes) * 100, 2
+            )
 
     return {
         "load_avg": {
@@ -160,7 +171,9 @@ def _collect_host_metrics() -> dict:
             "5m": round(load_5m, 2),
             "15m": round(load_15m, 2),
         },
-        "cpu_percent": round(cpu_percent, 2) if cpu_percent is not None else None,
+        "cpu_percent": round(cpu_percent, 2)
+        if cpu_percent is not None
+        else None,
         "memory": {
             "total_bytes": mem_total_bytes,
             "used_bytes": mem_used_bytes,
@@ -194,8 +207,12 @@ def _collect_vpn_live_metrics(now_epoch: int) -> dict:
 
     if not vpn_metrics["auto_provisioning_enabled"]:
         with LIVE_METRICS_LOCK:
-            vpn_metrics["throughput_history"] = list(LIVE_METRICS_STATE["throughput_history"])
-            vpn_metrics["online_history"] = list(LIVE_METRICS_STATE["online_history"])
+            vpn_metrics["throughput_history"] = list(
+                LIVE_METRICS_STATE["throughput_history"]
+            )
+            vpn_metrics["online_history"] = list(
+                LIVE_METRICS_STATE["online_history"]
+            )
         return vpn_metrics
 
     now_monotonic = time.monotonic()
@@ -205,11 +222,15 @@ def _collect_vpn_live_metrics(now_epoch: int) -> dict:
         if cached_vpn_metrics and now_monotonic < backoff_until:
             cached_payload = dict(cached_vpn_metrics)
             cached_payload["stale"] = True
-            cached_payload["warning"] = "VPN временно недоступен, показаны последние данные."
+            cached_payload["warning"] = (
+                "VPN временно недоступен, показаны последние данные."
+            )
             cached_payload["throughput_history"] = list(
                 LIVE_METRICS_STATE["throughput_history"]
             )
-            cached_payload["online_history"] = list(LIVE_METRICS_STATE["online_history"])
+            cached_payload["online_history"] = list(
+                LIVE_METRICS_STATE["online_history"]
+            )
             return cached_payload
 
     try:
@@ -242,7 +263,9 @@ def _collect_vpn_live_metrics(now_epoch: int) -> dict:
             vpn_metrics["throughput_history"] = list(
                 LIVE_METRICS_STATE["throughput_history"]
             )
-            vpn_metrics["online_history"] = list(LIVE_METRICS_STATE["online_history"])
+            vpn_metrics["online_history"] = list(
+                LIVE_METRICS_STATE["online_history"]
+            )
         return vpn_metrics
 
     clients = server_payload.get("clients", [])
@@ -294,7 +317,9 @@ def _collect_vpn_live_metrics(now_epoch: int) -> dict:
         else:
             vpn_metrics["estimation_ready"] = False
 
-        throughput_bps = (delta_total / delta_seconds) if delta_seconds > 0 else 0.0
+        throughput_bps = (
+            (delta_total / delta_seconds) if delta_seconds > 0 else 0.0
+        )
         vpn_metrics["throughput_bps"] = round(throughput_bps, 2)
         vpn_metrics["online_clients_estimated"] = online_estimated
 
@@ -309,8 +334,12 @@ def _collect_vpn_live_metrics(now_epoch: int) -> dict:
         LIVE_METRICS_STATE["vpn_cached_metrics"] = dict(vpn_metrics)
         LIVE_METRICS_STATE["vpn_backoff_until"] = 0.0
 
-        vpn_metrics["throughput_history"] = list(LIVE_METRICS_STATE["throughput_history"])
-        vpn_metrics["online_history"] = list(LIVE_METRICS_STATE["online_history"])
+        vpn_metrics["throughput_history"] = list(
+            LIVE_METRICS_STATE["throughput_history"]
+        )
+        vpn_metrics["online_history"] = list(
+            LIVE_METRICS_STATE["online_history"]
+        )
 
     return vpn_metrics
 
@@ -322,7 +351,9 @@ def _build_admin_live_dashboard_payload() -> dict:
         "users_total": User.query.count(),
         "admins_total": User.query.filter_by(is_admin=True).count(),
         "subscriptions_total": Subscription.query.count(),
-        "subscriptions_active": Subscription.query.filter_by(status="active").count(),
+        "subscriptions_active": Subscription.query.filter_by(
+            status="active"
+        ).count(),
         "invoices_total": Invoice.query.count(),
         "invoices_approved": Invoice.query.filter(
             Invoice.status.in_(processed_statuses)
@@ -332,7 +363,9 @@ def _build_admin_live_dashboard_payload() -> dict:
             type=SUBSCRIPTION_REQUEST_TYPE, status="pending"
         ).count(),
         "devices_total": Device.query.count(),
-        "devices_ready": Device.query.filter_by(provisioning_state="ready").count(),
+        "devices_ready": Device.query.filter_by(
+            provisioning_state="ready"
+        ).count(),
     }
 
     now_epoch = int(now.timestamp())
@@ -407,7 +440,9 @@ def serialize_datetime(value) -> str | None:
 
 
 def serialize_tariff(tariff: Tariff) -> dict:
-    features_by_name = {plan["name"]: plan.get("features", []) for plan in PLANS}
+    features_by_name = {
+        plan["name"]: plan.get("features", []) for plan in PLANS
+    }
     return {
         "id": tariff.id,
         "name": tariff.name,
@@ -451,7 +486,9 @@ def serialize_subscription(subscription: Subscription | None) -> dict | None:
         "available_device_slots": subscription.get_available_device_slots(),
         "created_at": serialize_datetime(subscription.created_at),
         "updated_at": serialize_datetime(subscription.updated_at),
-        "tariff": serialize_tariff(subscription.tariff) if subscription.tariff else None,
+        "tariff": serialize_tariff(subscription.tariff)
+        if subscription.tariff
+        else None,
     }
 
 
@@ -571,7 +608,9 @@ def api_tariffs():
         .order_by(Tariff.sort_order.asc(), Tariff.name.asc())
         .all()
     )
-    return json_success({"tariffs": [serialize_tariff(tariff) for tariff in tariffs]})
+    return json_success(
+        {"tariffs": [serialize_tariff(tariff) for tariff in tariffs]}
+    )
 
 
 @api_bp.post("/auth/login")
@@ -592,7 +631,9 @@ def api_login():
     user.last_login_at = utc_now()
     db.session.commit()
     login_user(user)
-    return json_success({"user": serialize_user(user)}, message="Авторизация выполнена.")
+    return json_success(
+        {"user": serialize_user(user)}, message="Авторизация выполнена."
+    )
 
 
 @api_bp.get("/auth/csrf")
@@ -618,8 +659,12 @@ def api_me():
     return json_success(
         {
             "user": serialize_user(current_user),
-            "current_subscription": serialize_subscription(current_subscription),
-            "pending_request": serialize_invoice(pending_request) if pending_request else None,
+            "current_subscription": serialize_subscription(
+                current_subscription
+            ),
+            "pending_request": serialize_invoice(pending_request)
+            if pending_request
+            else None,
         }
     )
 
@@ -628,14 +673,20 @@ def api_me():
 @api_login_required
 def api_invoices():
     invoices = current_user.invoices.order_by(Invoice.created_at.desc()).all()
-    return json_success({"invoices": [serialize_invoice(invoice) for invoice in invoices]})
+    return json_success(
+        {"invoices": [serialize_invoice(invoice) for invoice in invoices]}
+    )
 
 
 @api_bp.get("/subscriptions/current")
 @api_login_required
 def api_current_subscription():
     return json_success(
-        {"subscription": serialize_subscription(get_current_subscription(current_user))}
+        {
+            "subscription": serialize_subscription(
+                get_current_subscription(current_user)
+            )
+        }
     )
 
 
@@ -658,7 +709,9 @@ def api_request_subscription():
     if tariff_id:
         tariff = db.session.get(Tariff, tariff_id)
     elif tariff_name:
-        tariff = db.session.scalar(db.select(Tariff).where(Tariff.name == tariff_name))
+        tariff = db.session.scalar(
+            db.select(Tariff).where(Tariff.name == tariff_name)
+        )
 
     if tariff is None or not tariff.is_active:
         return json_error("Выбранный тариф недоступен.", 404)
@@ -681,7 +734,9 @@ def api_devices():
         .order_by(Device.created_at.desc())
         .all()
     )
-    return json_success({"devices": [serialize_device(device) for device in devices]})
+    return json_success(
+        {"devices": [serialize_device(device) for device in devices]}
+    )
 
 
 @api_bp.post("/devices")
@@ -701,7 +756,9 @@ def api_create_device():
     is_admin_unlimited = current_user.is_admin
 
     if current_subscription is None or not current_subscription.is_active():
-        return json_error("Добавлять устройства можно только к активной подписке.", 403)
+        return json_error(
+            "Добавлять устройства можно только к активной подписке.", 403
+        )
 
     if not is_admin_unlimited and not current_subscription.can_add_device():
         return json_error("Лимит устройств по тарифу исчерпан.", 409)
@@ -733,7 +790,8 @@ def api_create_device():
             message = "Устройство создано, VPN-ссылка готова."
     else:
         message = (
-            "Устройство создано. Автовыдача VPN выключена, поэтому устройство ждёт обработки."
+            "Устройство создано. Автовыдача VPN выключена, "
+            "поэтому устройство ждёт обработки."
         )
 
     db.session.commit()
@@ -749,7 +807,9 @@ def api_create_device():
 def api_revoke_device(device_id: str):
     device = (
         Device.query.join(Subscription)
-        .filter(Device.id == device_id, Subscription.user_id == current_user.id)
+        .filter(
+            Device.id == device_id, Subscription.user_id == current_user.id
+        )
         .first()
     )
     if device is None:
@@ -774,7 +834,9 @@ def api_revoke_device(device_id: str):
 
     device.mark_revoked()
     db.session.commit()
-    return json_success({"device": serialize_device(device)}, message="Устройство отозвано.")
+    return json_success(
+        {"device": serialize_device(device)}, message="Устройство отозвано."
+    )
 
 
 @api_bp.get("/admin/overview")
@@ -788,7 +850,9 @@ def api_admin_overview():
         "users_total": User.query.count(),
         "admins_total": User.query.filter_by(is_admin=True).count(),
         "subscriptions_total": Subscription.query.count(),
-        "subscriptions_active": Subscription.query.filter_by(status="active").count(),
+        "subscriptions_active": Subscription.query.filter_by(
+            status="active"
+        ).count(),
         "invoices_total": Invoice.query.count(),
         "invoices_approved": Invoice.query.filter(
             Invoice.status.in_(processed_statuses)
@@ -798,7 +862,9 @@ def api_admin_overview():
             type=SUBSCRIPTION_REQUEST_TYPE, status="pending"
         ).count(),
         "devices_total": Device.query.count(),
-        "devices_ready": Device.query.filter_by(provisioning_state="ready").count(),
+        "devices_ready": Device.query.filter_by(
+            provisioning_state="ready"
+        ).count(),
     }
 
     vpn_summary = {
@@ -817,8 +883,12 @@ def api_admin_overview():
         except VpnProvisioningError as error:
             vpn_summary["error"] = str(error)
         else:
-            vpn_summary["server_clients_count"] = len(server_payload["clients"])
-            vpn_summary["stats_enabled"] = bool(server_payload["stats_enabled"])
+            vpn_summary["server_clients_count"] = len(
+                server_payload["clients"]
+            )
+            vpn_summary["stats_enabled"] = bool(
+                server_payload["stats_enabled"]
+            )
             vpn_summary["inbound_tag"] = server_payload["inbound_tag"]
 
     return json_success({"stats": stats, "vpn": vpn_summary})
@@ -839,7 +909,9 @@ def api_admin_live_dashboard():
 
     with LIVE_METRICS_LOCK:
         LIVE_METRICS_STATE["cached_payload"] = payload
-        LIVE_METRICS_STATE["cache_until"] = time.monotonic() + LIVE_METRICS_CACHE_SECONDS
+        LIVE_METRICS_STATE["cache_until"] = (
+            time.monotonic() + LIVE_METRICS_CACHE_SECONDS
+        )
 
     return json_success(payload)
 
@@ -849,7 +921,11 @@ def api_admin_live_dashboard():
 def api_admin_users():
     users = User.query.order_by(User.created_at.desc()).all()
     return json_success(
-        {"users": [serialize_user(user, include_relations=True) for user in users]}
+        {
+            "users": [
+                serialize_user(user, include_relations=True) for user in users
+            ]
+        }
     )
 
 
@@ -860,7 +936,9 @@ def api_admin_delete_user(user_id: str):
     if user is None:
         return json_error("Пользователь не найден.", 404)
     if user.id == current_user.id:
-        return json_error("Нельзя удалить собственный аккаунт администратора.", 409)
+        return json_error(
+            "Нельзя удалить собственный аккаунт администратора.", 409
+        )
 
     try:
         summary = delete_user_account(user)
@@ -909,7 +987,11 @@ def api_admin_server_vless_clients():
         retry_attempts=ADMIN_VPN_LIST_RETRY_ATTEMPTS,
         retry_backoff_seconds=0.0,
     )
-    uuids = [client.get("uuid") for client in server_payload["clients"] if client.get("uuid")]
+    uuids = [
+        client.get("uuid")
+        for client in server_payload["clients"]
+        if client.get("uuid")
+    ]
     device_by_uuid = {}
     if uuids:
         linked_devices = (
@@ -918,7 +1000,9 @@ def api_admin_server_vless_clients():
             .all()
         )
         device_by_uuid = {
-            device.vpn_uuid: device for device in linked_devices if device.vpn_uuid
+            device.vpn_uuid: device
+            for device in linked_devices
+            if device.vpn_uuid
         }
 
     clients = []
@@ -927,7 +1011,9 @@ def api_admin_server_vless_clients():
         clients.append(
             {
                 **client,
-                "device": serialize_device(linked_device) if linked_device else None,
+                "device": serialize_device(linked_device)
+                if linked_device
+                else None,
                 "user": serialize_user(linked_device.subscription.user)
                 if linked_device
                 else None,

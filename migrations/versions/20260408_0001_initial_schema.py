@@ -25,7 +25,9 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("price_cents", sa.Integer(), nullable=False),
         sa.Column("days_valid", sa.Integer(), nullable=False),
-        sa.Column("device_limit", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column(
+            "device_limit", sa.Integer(), nullable=False, server_default="1"
+        ),
         sa.Column("traffic_limit_bytes", sa.BigInteger(), nullable=True),
         sa.Column("sort_order", sa.Integer(), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=True),
@@ -39,8 +41,12 @@ def upgrade() -> None:
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column("password_hash", sa.String(length=255), nullable=False),
         sa.Column("balance", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column("is_admin", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "is_active", sa.Boolean(), nullable=False, server_default=sa.true()
+        ),
+        sa.Column(
+            "is_admin", sa.Boolean(), nullable=False, server_default=sa.false()
+        ),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("last_login_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
@@ -75,7 +81,9 @@ def upgrade() -> None:
         sa.Column("last_renewed_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(["tariff_id"], ["tariffs.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tariff_id"], ["tariffs.id"], ondelete="RESTRICT"
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("config_code"),
@@ -130,7 +138,9 @@ def upgrade() -> None:
         ["provisioning_state"],
         unique=False,
     )
-    op.create_index(op.f("ix_devices_status"), "devices", ["status"], unique=False)
+    op.create_index(
+        op.f("ix_devices_status"), "devices", ["status"], unique=False
+    )
     op.create_index(
         op.f("ix_devices_subscription_id"),
         "devices",
@@ -169,8 +179,12 @@ def upgrade() -> None:
         ["payment_system_id"],
         unique=False,
     )
-    op.create_index(op.f("ix_invoices_status"), "invoices", ["status"], unique=False)
-    op.create_index(op.f("ix_invoices_user_id"), "invoices", ["user_id"], unique=False)
+    op.create_index(
+        op.f("ix_invoices_status"), "invoices", ["status"], unique=False
+    )
+    op.create_index(
+        op.f("ix_invoices_user_id"), "invoices", ["user_id"], unique=False
+    )
 
 
 def downgrade() -> None:

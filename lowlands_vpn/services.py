@@ -1,7 +1,14 @@
 from datetime import timedelta
 
 from lowlands_vpn.extensions import db
-from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
+from lowlands_vpn.models import (
+    Device,
+    Invoice,
+    Subscription,
+    Tariff,
+    User,
+    utc_now,
+)
 
 SUBSCRIPTION_REQUEST_TYPE = "subscription_request"
 
@@ -23,7 +30,9 @@ def revoke_subscription_devices(subscription: Subscription) -> int:
         revoke_device_on_server,
     )
 
-    active_devices = subscription.devices.filter(Device.status != "revoked").all()
+    active_devices = subscription.devices.filter(
+        Device.status != "revoked"
+    ).all()
     if not active_devices:
         return 0
 
@@ -50,7 +59,9 @@ def revoke_subscription_devices(subscription: Subscription) -> int:
 
 
 def sync_user_subscriptions(user: User) -> dict[str, int]:
-    subscriptions = user.subscriptions.order_by(Subscription.created_at.desc()).all()
+    subscriptions = user.subscriptions.order_by(
+        Subscription.created_at.desc()
+    ).all()
     changed = False
     updated_statuses = 0
     auto_revoked_devices = 0
@@ -106,12 +117,16 @@ def create_subscription_request(user: User, tariff: Tariff) -> Invoice:
 
     if current_subscription:
         request_kind = (
-            "renewal" if current_subscription.tariff_id == tariff.id else "plan_change"
+            "renewal"
+            if current_subscription.tariff_id == tariff.id
+            else "plan_change"
         )
 
     invoice = Invoice(
         user_id=user.id,
-        subscription_id=current_subscription.id if current_subscription else None,
+        subscription_id=current_subscription.id
+        if current_subscription
+        else None,
         amount_cents=tariff.price_cents,
         status="pending",
         type=SUBSCRIPTION_REQUEST_TYPE,
@@ -130,7 +145,9 @@ def create_subscription_request(user: User, tariff: Tariff) -> Invoice:
     return invoice
 
 
-def approve_subscription_request(invoice: Invoice, reviewer_id: str) -> Subscription:
+def approve_subscription_request(
+    invoice: Invoice, reviewer_id: str
+) -> Subscription:
     metadata = invoice.get_metadata()
     tariff_id = metadata.get("tariff_id")
     tariff = db.session.get(Tariff, tariff_id)

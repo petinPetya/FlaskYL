@@ -18,7 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("users", sa.Column("email_verified_at", sa.DateTime(), nullable=True))
+    op.add_column(
+        "users", sa.Column("email_verified_at", sa.DateTime(), nullable=True)
+    )
     op.add_column(
         "users",
         sa.Column("email_verification_sent_at", sa.DateTime(), nullable=True),

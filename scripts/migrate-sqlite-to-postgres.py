@@ -28,16 +28,25 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def fetch_rows(sqlite_path: str, table_name: str) -> tuple[list[str], list[dict]]:
+def fetch_rows(
+    sqlite_path: str, table_name: str
+) -> tuple[list[str], list[dict]]:
     connection = sqlite3.connect(sqlite_path)
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute(f"SELECT * FROM {table_name}").fetchall()
         if not rows:
-            columns = [row[1] for row in connection.execute(f"PRAGMA table_info({table_name})")]
+            columns = [
+                row[1]
+                for row in connection.execute(
+                    f"PRAGMA table_info({table_name})"
+                )
+            ]
             return columns, []
         columns = rows[0].keys()
-        return list(columns), [normalize_row(table_name, dict(row)) for row in rows]
+        return list(columns), [
+            normalize_row(table_name, dict(row)) for row in rows
+        ]
     finally:
         connection.close()
 
@@ -52,12 +61,15 @@ def normalize_row(table_name: str, row: dict) -> dict:
 def truncate_target(connection) -> None:
     connection.execute(
         text(
-            "TRUNCATE TABLE invoices, devices, subscriptions, users, tariffs RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE invoices, devices, subscriptions, users, tariffs "
+            "RESTART IDENTITY CASCADE"
         )
     )
 
 
-def insert_rows(connection, table_name: str, columns: list[str], rows: list[dict]) -> None:
+def insert_rows(
+    connection, table_name: str, columns: list[str], rows: list[dict]
+) -> None:
     if not rows:
         return
     column_sql = ", ".join(columns)

@@ -1,3 +1,6 @@
+from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User
+from lowlands_vpn.extensions import db
+from lowlands_vpn import create_app
 import sys
 from pathlib import Path
 
@@ -6,10 +9,6 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
-from lowlands_vpn import create_app
-from lowlands_vpn.extensions import db
-from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User
 
 
 @pytest.fixture()

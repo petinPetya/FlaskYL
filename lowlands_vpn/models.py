@@ -15,7 +15,9 @@ def utc_now():
 class User(UserMixin, db.Model):
     __tablename__ = "users"
 
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(
+        db.String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     balance = db.Column(db.Integer, default=0, nullable=False)
@@ -28,7 +30,10 @@ class User(UserMixin, db.Model):
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     subscriptions = db.relationship(
-        "Subscription", backref="user", lazy="dynamic", cascade="all, delete-orphan"
+        "Subscription",
+        backref="user",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
     )
     invoices = db.relationship(
         "Invoice", backref="user", lazy="dynamic", cascade="all, delete-orphan"
@@ -74,7 +79,9 @@ class User(UserMixin, db.Model):
 class Tariff(db.Model):
     __tablename__ = "tariffs"
 
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(
+        db.String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, default="")
     price_cents = db.Column(db.Integer, nullable=False)
@@ -86,10 +93,14 @@ class Tariff(db.Model):
     is_popular = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=utc_now)
 
-    subscriptions = db.relationship("Subscription", backref="tariff", lazy="dynamic")
+    subscriptions = db.relationship(
+        "Subscription", backref="tariff", lazy="dynamic"
+    )
 
     def is_unlimited_traffic(self):
-        return self.traffic_limit_bytes is None or self.traffic_limit_bytes == 0
+        return (
+            self.traffic_limit_bytes is None or self.traffic_limit_bytes == 0
+        )
 
     def is_unlimited_time(self):
         return self.days_valid == 0
@@ -101,7 +112,9 @@ class Tariff(db.Model):
 class Subscription(db.Model):
     __tablename__ = "subscriptions"
 
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(
+        db.String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     user_id = db.Column(
         db.String(36),
         db.ForeignKey("users.id", ondelete="CASCADE"),
@@ -109,7 +122,9 @@ class Subscription(db.Model):
         index=True,
     )
     tariff_id = db.Column(
-        db.String(36), db.ForeignKey("tariffs.id", ondelete="RESTRICT"), nullable=False
+        db.String(36),
+        db.ForeignKey("tariffs.id", ondelete="RESTRICT"),
+        nullable=False,
     )
 
     starts_at = db.Column(db.DateTime, default=utc_now, nullable=False)
@@ -119,7 +134,9 @@ class Subscription(db.Model):
     used_traffic_bytes = db.Column(db.BigInteger, default=0, nullable=False)
     traffic_limit_bytes = db.Column(db.BigInteger, nullable=True)
 
-    status = db.Column(db.String(32), default="active", nullable=False, index=True)
+    status = db.Column(
+        db.String(32), default="active", nullable=False, index=True
+    )
 
     config_code = db.Column(db.String(100), unique=True, nullable=True)
     public_key = db.Column(db.String(128), nullable=True)
@@ -133,13 +150,20 @@ class Subscription(db.Model):
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     devices = db.relationship(
-        "Device", backref="subscription", lazy="dynamic", cascade="all, delete-orphan"
+        "Device",
+        backref="subscription",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
     )
-    invoices = db.relationship("Invoice", backref="subscription", lazy="dynamic")
+    invoices = db.relationship(
+        "Invoice", backref="subscription", lazy="dynamic"
+    )
 
     def __init__(self, **kwargs):
         if "traffic_limit_bytes" not in kwargs and "tariff" in kwargs:
-            kwargs["traffic_limit_bytes"] = kwargs["tariff"].traffic_limit_bytes
+            kwargs["traffic_limit_bytes"] = kwargs[
+                "tariff"
+            ].traffic_limit_bytes
         super().__init__(**kwargs)
 
     def is_expired(self):
@@ -212,7 +236,9 @@ class Subscription(db.Model):
             self.starts_at = now
             self.expires_at = now + timedelta(days=tariff.days_valid)
         else:
-            self.expires_at = self.expires_at + timedelta(days=tariff.days_valid)
+            self.expires_at = self.expires_at + timedelta(
+                days=tariff.days_valid
+            )
 
         self.tariff_id = tariff.id
         self.traffic_limit_bytes = tariff.traffic_limit_bytes
@@ -235,7 +261,9 @@ class Subscription(db.Model):
 class Invoice(db.Model):
     __tablename__ = "invoices"
 
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(
+        db.String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     user_id = db.Column(
         db.String(36),
         db.ForeignKey("users.id", ondelete="CASCADE"),
@@ -249,7 +277,9 @@ class Invoice(db.Model):
     )
 
     amount_cents = db.Column(db.Integer, nullable=False)
-    status = db.Column(db.String(32), default="pending", nullable=False, index=True)
+    status = db.Column(
+        db.String(32), default="pending", nullable=False, index=True
+    )
     type = db.Column(db.String(32), nullable=False)
 
     review_channel = db.Column("payment_system", db.String(32), nullable=True)
@@ -341,7 +371,9 @@ class Invoice(db.Model):
 class Device(db.Model):
     __tablename__ = "devices"
 
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(
+        db.String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
     subscription_id = db.Column(
         db.String(36),
         db.ForeignKey("subscriptions.id", ondelete="CASCADE"),
@@ -350,7 +382,9 @@ class Device(db.Model):
     )
     name = db.Column(db.String(120), nullable=False)
     platform = db.Column(db.String(32), nullable=False)
-    status = db.Column(db.String(32), default="pending", nullable=False, index=True)
+    status = db.Column(
+        db.String(32), default="pending", nullable=False, index=True
+    )
     provisioning_state = db.Column(
         db.String(32), default="requested", nullable=False, index=True
     )

@@ -32,7 +32,14 @@ from lowlands_vpn.email_verification import (
     is_email_verification_enabled,
     is_email_verification_required,
 )
-from lowlands_vpn.models import Device, Invoice, Subscription, Tariff, User, utc_now
+from lowlands_vpn.models import (
+    Device,
+    Invoice,
+    Subscription,
+    Tariff,
+    User,
+    utc_now,
+)
 from lowlands_vpn.services import (
     SUBSCRIPTION_REQUEST_TYPE,
     approve_subscription_request,
@@ -51,6 +58,7 @@ from lowlands_vpn.vpn import (
     revoke_device_on_server,
     update_server_vless_client_email,
 )
+
 main_bp = Blueprint("main", __name__)
 
 
@@ -72,7 +80,10 @@ def admin_required(view_func):
     @login_required
     def wrapped_view(*args, **kwargs):
         if not current_user.is_admin:
-            flash("Доступ к админ-панели разрешен только администраторам.", "warning")
+            flash(
+                "Доступ к админ-панели разрешен только администраторам.",
+                "warning",
+            )
             return redirect(url_for("main.dashboard"))
         return view_func(*args, **kwargs)
 
@@ -101,7 +112,9 @@ def enforce_verified_email_or_redirect() -> bool:
 
 
 def build_plan_cards(tariffs: list[Tariff]) -> list[dict]:
-    features_by_name = {plan["name"]: plan.get("features", []) for plan in PLANS}
+    features_by_name = {
+        plan["name"]: plan.get("features", []) for plan in PLANS
+    }
     cards = []
 
     for tariff in tariffs:
@@ -134,10 +147,10 @@ def get_invoice_tariff(invoice: Invoice) -> Tariff | None:
 
 
 def is_invoice_removable(invoice: Invoice) -> bool:
-    return (
-        invoice.type == SUBSCRIPTION_REQUEST_TYPE
-        and invoice.status in {"approved", "paid"}
-    )
+    return invoice.type == SUBSCRIPTION_REQUEST_TYPE and invoice.status in {
+        "approved",
+        "paid",
+    }
 
 
 def is_subscription_removable(subscription: Subscription) -> bool:
@@ -186,12 +199,18 @@ def synchronize_vpn_runtime_state() -> dict[str, int | list[str]]:
     server_payload = list_server_vless_clients()
     server_clients = server_payload["clients"]
     server_by_uuid = {
-        client["uuid"]: client for client in server_clients if client.get("uuid")
+        client["uuid"]: client
+        for client in server_clients
+        if client.get("uuid")
     }
     local_devices = (
-        Device.query.join(Subscription).filter(Device.vpn_uuid.isnot(None)).all()
+        Device.query.join(Subscription)
+        .filter(Device.vpn_uuid.isnot(None))
+        .all()
     )
-    device_by_uuid = {device.vpn_uuid: device for device in local_devices if device.vpn_uuid}
+    device_by_uuid = {
+        device.vpn_uuid: device for device in local_devices if device.vpn_uuid
+    }
 
     for device in local_devices:
         server_client = server_by_uuid.get(device.vpn_uuid)
@@ -204,21 +223,30 @@ def synchronize_vpn_runtime_state() -> dict[str, int | list[str]]:
                     remove_server_vless_client_by_uuid(device.vpn_uuid)
                 except VpnProvisioningError as error:
                     summary["errors"].append(
-                        f"{device.name}: не удалось удалить серверный хвост ({error})"
+                        f"{device.name}: не удалось удалить "
+                        f"серверный хвост ({error})"
                     )
                 else:
                     summary["removed_server_stale_clients"] += 1
             continue
 
         if server_client is None:
-            device.mark_failed("Клиент отсутствует на сервере Xray. Нужна перевыдача.")
+            device.mark_failed(
+                "Клиент отсутствует на сервере Xray. Нужна перевыдача."
+            )
             summary["missing_server_clients"] += 1
             continue
 
-        if server_client.get("email") and device.vpn_email != server_client["email"]:
+        if (
+            server_client.get("email")
+            and device.vpn_email != server_client["email"]
+        ):
             device.vpn_email = server_client["email"]
 
-        if server_client.get("link") and device.vpn_link != server_client["link"]:
+        if (
+            server_client.get("link")
+            and device.vpn_link != server_client["link"]
+        ):
             device.vpn_link = server_client["link"]
             summary["refreshed_links"] += 1
 
@@ -232,7 +260,9 @@ def synchronize_vpn_runtime_state() -> dict[str, int | list[str]]:
     return summary
 
 
-def import_orphan_server_clients_to_admin_devices(admin_user: User) -> dict[str, int]:
+def import_orphan_server_clients_to_admin_devices(
+    admin_user: User,
+) -> dict[str, int]:
     if not admin_user.is_admin:
         raise VpnProvisioningError(
             "Импорт серверных клиентов разрешён только администратору."
@@ -241,7 +271,8 @@ def import_orphan_server_clients_to_admin_devices(admin_user: User) -> dict[str,
     target_subscription = get_current_subscription(admin_user)
     if target_subscription is None or not target_subscription.is_active():
         raise VpnProvisioningError(
-            "У администратора нет активной подписки для привязки серверных клиентов."
+            "У администратора нет активной подписки "
+            "для привязки серверных клиентов."
         )
 
     server_payload = list_server_vless_clients()
@@ -359,7 +390,8 @@ def login():
         if user and user.check_password(form.password.data):
             if not user.is_active:
                 flash(
-                    "Аккаунт деактивирован администратором. Обратитесь в поддержку.",
+                    "Аккаунт деактивирован администратором. "
+                    "Обратитесь в поддержку.",
                     "danger",
                 )
                 return render_template("login.html", form=form)
@@ -368,9 +400,13 @@ def login():
             login_user(user)
             next_page = request.args.get("next")
             flash("Вы успешно вошли в аккаунт.", "success")
-            if should_enforce_email_verification() and not user_email_is_verified(user):
+            if (
+                should_enforce_email_verification()
+                and not user_email_is_verified(user)
+            ):
                 flash(
-                    "Подтвердите email. До подтверждения часть действий будет недоступна.",
+                    "Подтвердите email. До подтверждения "
+                    "часть действий будет недоступна.",
                     "warning",
                 )
             if is_safe_redirect_url(next_page):
@@ -399,7 +435,8 @@ def register():
         db.session.commit()
         login_user(user)
         flash(
-            "Аккаунт создан. Теперь можно выбрать тариф в личном кабинете.", "success"
+            "Аккаунт создан. Теперь можно выбрать тариф в личном кабинете.",
+            "success",
         )
         if is_email_verification_enabled():
             flash(
@@ -423,7 +460,9 @@ def logout():
 @login_required
 def dashboard():
     current_subscription = get_current_subscription(current_user)
-    latest_invoice = current_user.invoices.order_by(Invoice.created_at.desc()).first()
+    latest_invoice = current_user.invoices.order_by(
+        Invoice.created_at.desc()
+    ).first()
     pending_request = get_pending_subscription_request(current_user)
     pending_request_tariff = (
         get_invoice_tariff(pending_request) if pending_request else None
@@ -436,7 +475,9 @@ def dashboard():
     devices = []
 
     if current_subscription:
-        devices = current_subscription.devices.order_by(Device.created_at.desc()).all()
+        devices = current_subscription.devices.order_by(
+            Device.created_at.desc()
+        ).all()
 
     return render_template(
         "dashboard.html",
@@ -473,7 +514,8 @@ def request_subscription():
     pending_request = get_pending_subscription_request(current_user)
     if pending_request is not None:
         flash(
-            "У вас уже есть необработанный запрос на подключение или продление.",
+            "У вас уже есть необработанный запрос "
+            "на подключение или продление.",
             "warning",
         )
         return redirect(url_for("main.dashboard"))
@@ -486,7 +528,8 @@ def request_subscription():
     create_subscription_request(current_user, tariff)
     db.session.commit()
     flash(
-        "Запрос на тариф создан. После ручной проверки он появится в истории кабинета.",
+        "Запрос на тариф создан. После ручной проверки "
+        "он появится в истории кабинета.",
         "success",
     )
     return redirect(url_for("main.dashboard"))
@@ -507,7 +550,10 @@ def add_device():
         return redirect(url_for("main.dashboard"))
 
     if current_subscription is None or not current_subscription.is_active():
-        flash("Добавлять устройства можно только для активной подписки.", "warning")
+        flash(
+            "Добавлять устройства можно только для активной подписки.",
+            "warning",
+        )
         return redirect(url_for("main.dashboard"))
 
     if not is_admin_unlimited and not current_subscription.can_add_device():
@@ -563,7 +609,9 @@ def revoke_device(device_id):
 
     device = (
         Device.query.join(Subscription)
-        .filter(Device.id == device_id, Subscription.user_id == current_user.id)
+        .filter(
+            Device.id == device_id, Subscription.user_id == current_user.id
+        )
         .first()
     )
     if device is None:
@@ -599,7 +647,9 @@ def admin_dashboard():
         "users_total": User.query.count(),
         "admins_total": User.query.filter_by(is_admin=True).count(),
         "subscriptions_total": Subscription.query.count(),
-        "subscriptions_active": Subscription.query.filter_by(status="active").count(),
+        "subscriptions_active": Subscription.query.filter_by(
+            status="active"
+        ).count(),
         "invoices_total": Invoice.query.count(),
         "invoices_approved": Invoice.query.filter(
             Invoice.status.in_(processed_statuses)
@@ -609,18 +659,28 @@ def admin_dashboard():
             type=SUBSCRIPTION_REQUEST_TYPE, status="pending"
         ).count(),
         "devices_total": Device.query.count(),
-        "devices_ready": Device.query.filter_by(provisioning_state="ready").count(),
+        "devices_ready": Device.query.filter_by(
+            provisioning_state="ready"
+        ).count(),
     }
     recent_users = User.query.order_by(User.created_at.desc()).limit(8).all()
-    recent_invoices = Invoice.query.order_by(Invoice.created_at.desc()).limit(8).all()
+    recent_invoices = (
+        Invoice.query.order_by(Invoice.created_at.desc()).limit(8).all()
+    )
     pending_requests = (
-        Invoice.query.filter_by(type=SUBSCRIPTION_REQUEST_TYPE, status="pending")
+        Invoice.query.filter_by(
+            type=SUBSCRIPTION_REQUEST_TYPE, status="pending"
+        )
         .order_by(Invoice.created_at.desc())
         .limit(8)
         .all()
     )
-    recent_devices = Device.query.order_by(Device.created_at.desc()).limit(8).all()
-    tariffs = Tariff.query.order_by(Tariff.sort_order.asc(), Tariff.name.asc()).all()
+    recent_devices = (
+        Device.query.order_by(Device.created_at.desc()).limit(8).all()
+    )
+    tariffs = Tariff.query.order_by(
+        Tariff.sort_order.asc(), Tariff.name.asc()
+    ).all()
     server_vless_clients = []
     server_vless_error = None
     server_vless_stats_enabled = False
@@ -657,7 +717,9 @@ def admin_dashboard():
                     {
                         **client,
                         "device": local_device,
-                        "user": local_device.subscription.user if local_device else None,
+                        "user": local_device.subscription.user
+                        if local_device
+                        else None,
                     }
                 )
         except VpnProvisioningError as error:
@@ -698,7 +760,9 @@ def admin_user_detail(user_id):
         return redirect(url_for("main.admin_users"))
 
     sync_user_subscriptions(user)
-    subscriptions = user.subscriptions.order_by(Subscription.created_at.desc()).all()
+    subscriptions = user.subscriptions.order_by(
+        Subscription.created_at.desc()
+    ).all()
     invoices = user.invoices.order_by(Invoice.created_at.desc()).all()
     devices = (
         Device.query.join(Subscription)
@@ -706,7 +770,9 @@ def admin_user_detail(user_id):
         .order_by(Device.created_at.desc())
         .all()
     )
-    revoked_devices_count = sum(1 for device in devices if is_device_removable(device))
+    revoked_devices_count = sum(
+        1 for device in devices if is_device_removable(device)
+    )
     role_form = AdminActionForm(prefix="role")
     status_form = AdminActionForm(prefix="status")
     verify_email_form = AdminActionForm(prefix="verify-email")
@@ -726,12 +792,16 @@ def admin_user_detail(user_id):
         form.last_error.data = device.last_error
         device_forms[device.id] = form
 
-        vpn_email_form = AdminDeviceVpnEmailForm(prefix=f"vpn-email-{device.id}")
+        vpn_email_form = AdminDeviceVpnEmailForm(
+            prefix=f"vpn-email-{device.id}"
+        )
         vpn_email_form.vpn_email.data = device.vpn_email or ""
         vpn_email_forms[device.id] = vpn_email_form
 
     for subscription in subscriptions:
-        form = AdminSubscriptionExpiryForm(prefix=f"subscription-{subscription.id}")
+        form = AdminSubscriptionExpiryForm(
+            prefix=f"subscription-{subscription.id}"
+        )
         form.is_lifetime.data = subscription.is_lifetime
         if not subscription.is_lifetime and subscription.expires_at:
             form.expires_at.data = subscription.expires_at
@@ -778,7 +848,10 @@ def admin_toggle_user_admin(user_id):
         return redirect(url_for("main.admin_users"))
 
     if user.id == current_user.id and user.is_admin:
-        flash("Нельзя снять права администратора с собственного аккаунта.", "warning")
+        flash(
+            "Нельзя снять права администратора с собственного аккаунта.",
+            "warning",
+        )
         return redirect(url_for("main.admin_user_detail", user_id=user_id))
 
     user.is_admin = not user.is_admin
@@ -924,13 +997,17 @@ def admin_approve_invoice(invoice_id):
 
     if invoice.status != "pending":
         flash("Этот запрос уже обработан.", "warning")
-        return redirect(url_for("main.admin_user_detail", user_id=invoice.user_id))
+        return redirect(
+            url_for("main.admin_user_detail", user_id=invoice.user_id)
+        )
 
     try:
         approve_subscription_request(invoice, current_user.id)
     except ValueError as error:
         flash(str(error), "danger")
-        return redirect(url_for("main.admin_user_detail", user_id=invoice.user_id))
+        return redirect(
+            url_for("main.admin_user_detail", user_id=invoice.user_id)
+        )
 
     db.session.commit()
     flash("Запрос подтвержден, подписка обновлена.", "success")
@@ -952,7 +1029,9 @@ def admin_cancel_invoice(invoice_id):
 
     if invoice.status != "pending":
         flash("Этот запрос уже обработан.", "warning")
-        return redirect(url_for("main.admin_user_detail", user_id=invoice.user_id))
+        return redirect(
+            url_for("main.admin_user_detail", user_id=invoice.user_id)
+        )
 
     metadata = invoice.get_metadata()
     metadata["reviewed_by"] = current_user.id
@@ -978,8 +1057,13 @@ def admin_delete_invoice(invoice_id):
         return redirect(url_for("main.admin_dashboard"))
 
     if not is_invoice_removable(invoice):
-        flash("Удалять можно только подтвержденные запросы на подписку.", "warning")
-        return redirect(url_for("main.admin_user_detail", user_id=invoice.user_id))
+        flash(
+            "Удалять можно только подтвержденные запросы на подписку.",
+            "warning",
+        )
+        return redirect(
+            url_for("main.admin_user_detail", user_id=invoice.user_id)
+        )
 
     user_id = invoice.user_id
     db.session.delete(invoice)
@@ -988,7 +1072,9 @@ def admin_delete_invoice(invoice_id):
     return redirect(url_for("main.admin_user_detail", user_id=user_id))
 
 
-@main_bp.route("/admin/subscriptions/<string:subscription_id>/delete", methods=["POST"])
+@main_bp.route(
+    "/admin/subscriptions/<string:subscription_id>/delete", methods=["POST"]
+)
 @admin_required
 def admin_delete_subscription(subscription_id):
     form = AdminActionForm()
@@ -1017,7 +1103,9 @@ def admin_delete_subscription(subscription_id):
     return redirect(url_for("main.admin_user_detail", user_id=user_id))
 
 
-@main_bp.route("/admin/subscriptions/<string:subscription_id>/expiry", methods=["POST"])
+@main_bp.route(
+    "/admin/subscriptions/<string:subscription_id>/expiry", methods=["POST"]
+)
 @admin_required
 def admin_update_subscription_expiry(subscription_id):
     subscription = db.session.get(Subscription, subscription_id)
@@ -1025,16 +1113,21 @@ def admin_update_subscription_expiry(subscription_id):
         flash("Подписка не найдена.", "warning")
         return redirect(url_for("main.admin_dashboard"))
 
-    form = AdminSubscriptionExpiryForm(prefix=f"subscription-{subscription.id}")
+    form = AdminSubscriptionExpiryForm(
+        prefix=f"subscription-{subscription.id}"
+    )
     if not form.validate_on_submit():
-        flash("Проверьте параметры срока подписки и повторите попытку.", "danger")
+        flash(
+            "Проверьте параметры срока подписки и повторите попытку.", "danger"
+        )
         return redirect(
             url_for("main.admin_user_detail", user_id=subscription.user_id)
         )
 
     if not can_manage_subscription_expiry(subscription):
         flash(
-            "Ручная настройка срока доступна только для подписок администратора.",
+            "Ручная настройка срока доступна только "
+            "для подписок администратора.",
             "warning",
         )
         return redirect(
@@ -1053,7 +1146,10 @@ def admin_update_subscription_expiry(subscription_id):
 
     expires_at = form.expires_at.data
     if expires_at is None:
-        flash("Укажите дату и время окончания или включите бессрочный режим.", "warning")
+        flash(
+            "Укажите дату и время окончания или включите бессрочный режим.",
+            "warning",
+        )
         return redirect(
             url_for("main.admin_user_detail", user_id=subscription.user_id)
         )
@@ -1065,7 +1161,9 @@ def admin_update_subscription_expiry(subscription_id):
     subscription.sync_status()
     db.session.commit()
     flash("Срок подписки обновлён.", "success")
-    return redirect(url_for("main.admin_user_detail", user_id=subscription.user_id))
+    return redirect(
+        url_for("main.admin_user_detail", user_id=subscription.user_id)
+    )
 
 
 @main_bp.route("/admin/devices/<string:device_id>/update", methods=["POST"])
@@ -1080,13 +1178,20 @@ def admin_update_device(device_id):
     if not form.validate_on_submit():
         flash("Проверьте поля устройства и повторите попытку.", "danger")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
-    assigned_ip = form.assigned_ip.data.strip() if form.assigned_ip.data else None
+    assigned_ip = (
+        form.assigned_ip.data.strip() if form.assigned_ip.data else None
+    )
     last_error = form.last_error.data.strip() if form.last_error.data else None
 
-    if form.status.data == "revoked" or form.provisioning_state.data == "revoked":
+    if (
+        form.status.data == "revoked"
+        or form.provisioning_state.data == "revoked"
+    ):
         device.mark_revoked()
     elif form.provisioning_state.data == "ready":
         device.mark_ready(assigned_ip)
@@ -1122,26 +1227,40 @@ def admin_update_device_vpn_email(device_id):
     if not form.validate_on_submit():
         flash("Проверьте Xray email и повторите попытку.", "danger")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     if not is_vpn_auto_provisioning_enabled():
-        flash("SSH/VPN интеграция не настроена в текущем запуске Flask.", "warning")
+        flash(
+            "SSH/VPN интеграция не настроена в текущем запуске Flask.",
+            "warning",
+        )
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     if not device.vpn_uuid:
-        flash("У устройства нет VPN UUID. Сначала выполните выдачу VPN.", "warning")
+        flash(
+            "У устройства нет VPN UUID. Сначала выполните выдачу VPN.",
+            "warning",
+        )
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     new_email = form.vpn_email.data.strip()
     if device.vpn_email == new_email:
         flash("Xray email уже имеет это значение.", "info")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     try:
@@ -1153,7 +1272,9 @@ def admin_update_device_vpn_email(device_id):
     except VpnProvisioningError as error:
         flash(f"Не удалось обновить Xray email: {error}", "danger")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     device.vpn_email = (payload.get("email") or new_email).strip()
@@ -1161,7 +1282,9 @@ def admin_update_device_vpn_email(device_id):
         device.vpn_link = payload["link"]
     db.session.commit()
     flash("Xray email обновлён без замены UUID и ссылки.", "success")
-    return redirect(url_for("main.admin_user_detail", user_id=device.subscription.user_id))
+    return redirect(
+        url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+    )
 
 
 @main_bp.route("/admin/devices/<string:device_id>/provision", methods=["POST"])
@@ -1180,13 +1303,17 @@ def admin_provision_device(device_id):
     if device.status == "revoked":
         flash("Нельзя перевыдать уже отозванное устройство.", "warning")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     if not is_vpn_auto_provisioning_enabled():
         flash("Автовыдача VPN не настроена в переменных окружения.", "warning")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     device.mark_requested()
@@ -1197,7 +1324,9 @@ def admin_provision_device(device_id):
         db.session.commit()
         flash("Выдача VPN завершилась ошибкой.", "danger")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     device.mark_ready(device.assigned_ip)
@@ -1224,7 +1353,9 @@ def admin_revoke_device(device_id):
     if device.status == "revoked":
         flash("Устройство уже отозвано.", "info")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     try:
@@ -1234,7 +1365,9 @@ def admin_revoke_device(device_id):
         db.session.commit()
         flash("Не удалось отозвать VPN-конфиг устройства.", "danger")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     device.mark_revoked()
@@ -1261,7 +1394,9 @@ def admin_delete_device(device_id):
     if not is_device_removable(device):
         flash("Удалять можно только отозванные устройства.", "warning")
         return redirect(
-            url_for("main.admin_user_detail", user_id=device.subscription.user_id)
+            url_for(
+                "main.admin_user_detail", user_id=device.subscription.user_id
+            )
         )
 
     user_id = device.subscription.user_id
@@ -1271,7 +1406,9 @@ def admin_delete_device(device_id):
     return redirect(url_for("main.admin_user_detail", user_id=user_id))
 
 
-@main_bp.route("/admin/vpn/clients/<string:client_uuid>/delete", methods=["POST"])
+@main_bp.route(
+    "/admin/vpn/clients/<string:client_uuid>/delete", methods=["POST"]
+)
 @admin_required
 def admin_delete_server_vless_client(client_uuid):
     form = AdminActionForm()
@@ -1308,7 +1445,10 @@ def admin_import_orphan_server_clients():
         return redirect(url_for("main.admin_dashboard"))
 
     if not is_vpn_auto_provisioning_enabled():
-        flash("SSH/VPN интеграция не настроена в текущем запуске Flask.", "warning")
+        flash(
+            "SSH/VPN интеграция не настроена в текущем запуске Flask.",
+            "warning",
+        )
         return redirect(url_for("main.admin_dashboard"))
 
     try:
@@ -1319,7 +1459,9 @@ def admin_import_orphan_server_clients():
 
     flash(
         "Осиротевшие серверные клиенты обработаны. "
-        f"Импортировано: {result['imported_count']}, пропущено: {result['skipped_count']}.",
+        f"Импортировано: {result['imported_count']}, пропущено: {
+            result['skipped_count']
+        }.",
         "success",
     )
     return redirect(url_for("main.admin_dashboard"))
@@ -1334,7 +1476,10 @@ def admin_sync_vpn_state():
         return redirect(url_for("main.admin_dashboard"))
 
     if not is_vpn_auto_provisioning_enabled():
-        flash("SSH/VPN интеграция не настроена в текущем запуске Flask.", "warning")
+        flash(
+            "SSH/VPN интеграция не настроена в текущем запуске Flask.",
+            "warning",
+        )
         return redirect(url_for("main.admin_dashboard"))
 
     try:
@@ -1347,7 +1492,8 @@ def admin_sync_vpn_state():
         "Сверка с Xray завершена. "
         f"Обновлено статусов подписок: {summary['updated_statuses']}. "
         f"Авто-отозвано устройств: {summary['auto_revoked_devices']}. "
-        f"Очищено серверных хвостов: {summary['removed_server_stale_clients']}. "
+        "Очищено серверных хвостов: "
+        f"{summary['removed_server_stale_clients']}. "
         f"Отсутствуют на сервере: {summary['missing_server_clients']}. "
         f"Осиротевших серверных клиентов: {summary['orphan_server_clients']}.",
         "info",
@@ -1363,7 +1509,9 @@ def admin_sync_vpn_state():
     return redirect(url_for("main.admin_dashboard"))
 
 
-@main_bp.route("/admin/users/<string:user_id>/devices/delete-revoked", methods=["POST"])
+@main_bp.route(
+    "/admin/users/<string:user_id>/devices/delete-revoked", methods=["POST"]
+)
 @admin_required
 def admin_delete_revoked_devices(user_id):
     form = AdminActionForm()
